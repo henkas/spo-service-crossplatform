@@ -11,7 +11,7 @@ function New-SPOCertificateOAuthSession {
         [hashtable]$Settings
     )
 
-    $oauthSession = $Reflection.OAuthSession.GetConstructor(
+    $ctor = $Reflection.OAuthSession.GetConstructor(
         [Reflection.BindingFlags]'Public,NonPublic,Instance',
         $null,
         @(
@@ -20,16 +20,24 @@ function New-SPOCertificateOAuthSession {
             [string],
             [string]
         ),
-        $null).Invoke(@(
-            $Settings.Authority,
-            $Settings.Certificate,
-            $Settings.TenantId,
-            $Settings.ClientId
-        ))
+        $null)
+    if (-not $ctor) {
+        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.OAuthSession(string, X509Certificate2, string, string) is not present in the installed SPO module. Certificate auth requires a compatible SPO module build."
+    }
+    $oauthSession = $ctor.Invoke(@(
+        $Settings.Authority,
+        $Settings.Certificate,
+        $Settings.TenantId,
+        $Settings.ClientId
+    ))
 
-    $Reflection.OAuthSession.GetMethod(
+    $signInMethod = $Reflection.OAuthSession.GetMethod(
         'SignInWithCert',
-        [Reflection.BindingFlags]'Public,NonPublic,Instance').Invoke($oauthSession, @($Settings.Url.AbsoluteUri))
+        [Reflection.BindingFlags]'Public,NonPublic,Instance')
+    if (-not $signInMethod) {
+        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.OAuthSession.SignInWithCert is not present in the installed SPO module. Certificate auth requires a compatible SPO module build."
+    }
+    $null = $signInMethod.Invoke($oauthSession, @($Settings.Url.AbsoluteUri))
 
     return $oauthSession
 }

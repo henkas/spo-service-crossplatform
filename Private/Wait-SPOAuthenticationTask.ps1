@@ -2,7 +2,7 @@ function Wait-SPOAuthenticationTask {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)]
-        $Task
+        [System.Threading.Tasks.Task]$Task
     )
 
     # Poll via Start-Sleep instead of blocking on GetAwaiter().GetResult() so

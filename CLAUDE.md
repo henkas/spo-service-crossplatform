@@ -43,12 +43,11 @@ Three layers cooperate through reflection and runtime monkey-patching of types o
 
 The flow is load-sensitive and must stay in this order:
 
-1. `Get-SPOModuleReflection` imports `Microsoft.Online.SharePoint.PowerShell`, loads its MSAL DLL, and reflects out the internal `CmdLetContext` and `SPOService` types.
+1. `Get-SPOModuleReflection` imports `Microsoft.Online.SharePoint.PowerShell`, loads its MSAL DLL, and reflects out the internal `CmdLetContext`, `OAuthSession`, `SPOService`, and `SPOServiceHelper` types (throws with an actionable message if any are missing from the installed SPO module).
 2. `Assert-NativeShim` locates and `Add-Type`s the built `SPOService.CrossPlatform.dll`. It probes `bin/net10.0/` first (PSGallery install layout), then `src/.../bin/Release|Debug/net10.0/` (dev layout).
-3. MSAL `ConfidentialClientApplication` is built from cert + client/tenant IDs. A token-provider closure is captured in `$script:TokenProvider` so `Disconnect-*` can clear it.
-4. `CmdLetContext` is constructed **via reflection** on its non-public `(string, PSHost, string)` ctor — calling the normal factory goes through `SPOServiceHelper.InstantiateSPOService` which null-derefs `Microsoft.Win32.Registry.CurrentUser` on non-Windows.
-5. `context.WebRequestExecutorFactory` is set to the shim. An `ExecutingWebRequest` handler injects `Authorization: Bearer <token>` via the captured provider on every call — MSAL's own cache handles refresh.
-6. `SPOService` is reflection-constructed from the patched context, and the static `SPOService.CurrentService` property is assigned so the official cmdlets (`Get-SPOTenant`, `Get-SPOSite`, …) pick it up transparently.
+3. `New-SPOCmdletContext` constructs `CmdLetContext` **via reflection** on its non-public `(string, PSHost, string)` ctor — calling the normal factory goes through `SPOServiceHelper.InstantiateSPOService` which null-derefs `Microsoft.Win32.Registry.CurrentUser` on non-Windows. It also sets `context.WebRequestExecutorFactory` to the shim so all CSOM traffic routes through the HttpClient-based transport.
+4. An `OAuthSession` is built via the vendor module's own auth path: `New-SPOCertificateOAuthSession` calls the reflected `OAuthSession(authority, cert, tenantId, clientId)` ctor + `SignInWithCert`; `New-SPOSystemBrowserOAuthSession` calls the `OAuthSession(authority, useSystemBrowser=$true)` ctor + `SignIn` and polls the returned `Task` via `Wait-SPOAuthenticationTask` so Ctrl+C escapes promptly. There is no custom MSAL client and no `$script:TokenProvider`; refresh/caching is handled by the native session.
+5. The authenticated `OAuthSession` is assigned to `context.OAuthSession` via reflection, then `Assert-SPOAdminSite` runs the vendor's `IsTenantAdminSite` CSOM check (pre-auth validation is syntactic only via `Test-SPOAdminUrlFormat`). `SPOService` is reflection-constructed from the patched context, and the static `SPOService.CurrentService` property is assigned so the official cmdlets (`Get-SPOTenant`, `Get-SPOSite`, …) pick it up transparently.
 
 **2. Native shim — `src/SPOService.CrossPlatform/HttpClientExecutor.cs`**
 

@@ -10,12 +10,24 @@ function Get-SPOModuleReflection {
     $dll = Join-Path $moduleBase 'Microsoft.Online.SharePoint.PowerShell.dll'
     $asm = [Reflection.Assembly]::LoadFrom($dll)
 
-    [pscustomobject]@{
-        ModuleBase       = $moduleBase
-        Assembly         = $asm
+    $types = [ordered]@{
         CmdLetContext    = $asm.GetType('Microsoft.Online.SharePoint.PowerShell.CmdLetContext')
         OAuthSession     = $asm.GetType('Microsoft.Online.SharePoint.PowerShell.OAuthSession')
         SPOService       = $asm.GetType('Microsoft.Online.SharePoint.PowerShell.SPOService')
         SPOServiceHelper = $asm.GetType('Microsoft.Online.SharePoint.PowerShell.SPOServiceHelper')
+    }
+
+    $missing = $types.GetEnumerator() | Where-Object { -not $_.Value } | ForEach-Object { $_.Key }
+    if ($missing) {
+        throw "Installed Microsoft.Online.SharePoint.PowerShell module is missing required type(s): $($missing -join ', '). Upgrade the SPO module."
+    }
+
+    [pscustomobject]@{
+        ModuleBase       = $moduleBase
+        Assembly         = $asm
+        CmdLetContext    = $types.CmdLetContext
+        OAuthSession     = $types.OAuthSession
+        SPOService       = $types.SPOService
+        SPOServiceHelper = $types.SPOServiceHelper
     }
 }
