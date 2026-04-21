@@ -274,7 +274,7 @@ jobs:
           Publish-Module -Path $stage -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             src/SPOService.CrossPlatform/bin/Release/net8.0/SPOService.CrossPlatform.dll
