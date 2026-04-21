@@ -1,0 +1,70 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# This workflow only consumes the commit checkout and installs public NuGet /
+# PSGallery packages. It does not read any untrusted event fields (titles,
+# bodies, commit messages), so no script-injection surface.
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Microsoft.Online.SharePoint.PowerShell
+        shell: pwsh
+        run: |
+          Install-Module Microsoft.Online.SharePoint.PowerShell `
+              -Scope CurrentUser -Force -AllowClobber
+          $v = Get-Module Microsoft.Online.SharePoint.PowerShell -ListAvailable |
+                Sort-Object Version -Descending | Select-Object -First 1
+          Write-Host "Installed SPO module $($v.Version) at $($v.ModuleBase)"
+
+      - name: Build native shim
+        run: dotnet build -c Release src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
+
+      - name: Import module (smoke test)
+        shell: pwsh
+        run: |
+          Import-Module ./SPOService.CrossPlatform.psd1 -Force -ErrorAction Stop
+          $m = Get-Module SPOService.CrossPlatform
+          if (-not $m) { throw 'Module did not load.' }
+
+          $expectedFunctions = @('Connect-SPOServiceCrossPlatform', 'Disconnect-SPOServiceCrossPlatform')
+          foreach ($cmd in $expectedFunctions) {
+            if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
+              throw "Expected function missing: $cmd"
+            }
+          }
+
+          # Aliases must resolve to the full function names. If another module
+          # shadowed them, fail loudly rather than silently skipping the check.
+          foreach ($alias in 'Connect-SPOService', 'Disconnect-SPOService') {
+            $cmd = Get-Command $alias -ErrorAction Stop
+            if ($cmd.CommandType -ne 'Alias') {
+              throw "Expected $alias to be an Alias; got $($cmd.CommandType)."
+            }
+            if ($cmd.ResolvedCommand.Name -notmatch 'CrossPlatform$') {
+              throw "Alias $alias resolves to $($cmd.ResolvedCommand.Name), expected *CrossPlatform."
+            }
+          }
+
+          Write-Host ("OK: functions={0}; aliases={1}" -f `
+              ($m.ExportedFunctions.Keys -join ', '), `
+              ($m.ExportedAliases.Keys -join ', '))

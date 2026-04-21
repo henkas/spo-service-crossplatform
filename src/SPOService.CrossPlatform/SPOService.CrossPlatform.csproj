@@ -1,0 +1,53 @@
+<Project Sdk="Microsoft.NET.Sdk" InitialTargets="ResolveSpoRuntime">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AssemblyName>SPOService.CrossPlatform</AssemblyName>
+    <RootNamespace>SPOService.CrossPlatform</RootNamespace>
+    <Nullable>disable</Nullable>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <Version>0.1.0</Version>
+    <Authors>nstop</Authors>
+    <Company>nstop Ltd.</Company>
+    <Copyright>Copyright (c) 2026 nstop Ltd. Released under the MIT License.</Copyright>
+    <Description>HttpClient-based WebRequestExecutor that lets the Microsoft.Online.SharePoint.PowerShell CSOM pipeline work on PowerShell 7 / .NET Core on macOS and Linux.</Description>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!--
+    Resolves Microsoft.SharePoint.Client.Runtime.dll from the installed
+    Microsoft.Online.SharePoint.PowerShell module. The reference is binary-only;
+    the DLL is not redistributed with this project.
+
+    Override with /p:SpoRuntimePath=/absolute/path/to/Microsoft.SharePoint.Client.Runtime.dll
+    on CI or when the module lives outside the default PowerShell user module path.
+
+    The Reference item is added inside the target because static <ItemGroup> metadata
+    is resolved at project-load time, before this InitialTarget runs.
+  -->
+  <Target Name="ResolveSpoRuntime">
+    <ItemGroup Condition="'$(SpoRuntimePath)' == ''">
+      <_SpoRuntimeCandidate Include="$(HOME)/.local/share/powershell/Modules/Microsoft.Online.SharePoint.PowerShell/**/Microsoft.SharePoint.Client.Runtime.dll" />
+      <_SpoRuntimeCandidate Include="$(USERPROFILE)/Documents/PowerShell/Modules/Microsoft.Online.SharePoint.PowerShell/**/Microsoft.SharePoint.Client.Runtime.dll" />
+      <_SpoRuntimeCandidate Include="$(ProgramFiles)/PowerShell/Modules/Microsoft.Online.SharePoint.PowerShell/**/Microsoft.SharePoint.Client.Runtime.dll" />
+    </ItemGroup>
+    <!--
+      Glob enumeration returns items in directory order (alphabetical on macOS/Linux
+      with APFS/ext4, and on Windows). Since versions sort lexicographically in the
+      same order as chronologically for SPO module releases, batching %() across the
+      item list leaves the last assignment winning, which is the newest version.
+    -->
+    <PropertyGroup Condition="'$(SpoRuntimePath)' == '' And '@(_SpoRuntimeCandidate)' != ''">
+      <SpoRuntimePath>%(_SpoRuntimeCandidate.FullPath)</SpoRuntimePath>
+    </PropertyGroup>
+    <Error Condition="'$(SpoRuntimePath)' == '' Or !Exists('$(SpoRuntimePath)')"
+           Text="Could not locate Microsoft.SharePoint.Client.Runtime.dll. Install the module (Install-Module Microsoft.Online.SharePoint.PowerShell) or pass /p:SpoRuntimePath=/absolute/path." />
+    <Message Importance="high" Text="Using SPO runtime: $(SpoRuntimePath)" />
+    <ItemGroup>
+      <Reference Include="Microsoft.SharePoint.Client.Runtime">
+        <HintPath>$(SpoRuntimePath)</HintPath>
+        <Private>false</Private>
+      </Reference>
+    </ItemGroup>
+  </Target>
+</Project>

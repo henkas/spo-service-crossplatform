@@ -1,0 +1,96 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+# This workflow only reads the pushed tag name (via env) and the checked-out
+# source. It does not evaluate any event-supplied strings inline in run: blocks,
+# so there is no script-injection surface.
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      # github.ref_name is the tag name (e.g. v0.1.0). Passed through env so
+      # nothing from the workflow context reaches the shell via ${{ }} inline.
+      TAG_NAME: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Microsoft.Online.SharePoint.PowerShell
+        shell: pwsh
+        run: |
+          Install-Module Microsoft.Online.SharePoint.PowerShell `
+              -Scope CurrentUser -Force -AllowClobber
+
+      - name: Resolve version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $tag = $env:TAG_NAME
+          if (-not $tag) { throw 'TAG_NAME env is empty.' }
+          $version = $tag.TrimStart('v')
+          if ($version -notmatch '^\d+\.\d+\.\d+(-[A-Za-z0-9\.\-]+)?$') {
+              throw "Refusing to build: tag '$tag' is not semver."
+          }
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Build native shim
+        run: >-
+          dotnet build -c Release
+          /p:Version=${{ steps.version.outputs.version }}
+          src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
+
+      - name: Assemble module package
+        shell: pwsh
+        env:
+          MODULE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $version = $env:MODULE_VERSION
+          if (-not $version) { throw 'MODULE_VERSION env is empty.' }
+
+          $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          Copy-Item -Recurse SPOService.CrossPlatform.psd1, SPOService.CrossPlatform.psm1, Public, Private, LICENSE, README.md -Destination $stage
+
+          $libDir = Join-Path $stage 'lib/net8.0'
+          New-Item -ItemType Directory -Force -Path $libDir | Out-Null
+          Copy-Item src/SPOService.CrossPlatform/bin/Release/net8.0/SPOService.CrossPlatform.dll -Destination $libDir
+
+          $psd1 = Join-Path $stage 'SPOService.CrossPlatform.psd1'
+          (Get-Content $psd1 -Raw) `
+              -replace "ModuleVersion\s*=\s*'[^']*'", "ModuleVersion = '$version'" |
+              Set-Content $psd1
+
+          Write-Host "Staged module at $stage (version $version)"
+          Get-ChildItem -Recurse $stage | Select-Object FullName
+
+      - name: Publish to PSGallery
+        shell: pwsh
+        env:
+          PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          if (-not $env:PSGALLERY_API_KEY) {
+              Write-Host "::warning::PSGALLERY_API_KEY secret is not set; skipping PSGallery publish."
+              exit 0
+          }
+          $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
+          Publish-Module -Path $stage -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
+
+      - name: Attach native DLL to GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            src/SPOService.CrossPlatform/bin/Release/net8.0/SPOService.CrossPlatform.dll
+          draft: false
+          fail_on_unmatched_files: true

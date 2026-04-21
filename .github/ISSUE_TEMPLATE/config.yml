@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Upstream SPO module bug
+    url: https://github.com/SharePoint/sp-dev-docs/issues/9434
+    about: The root defect this module works around. Additional reports there help push for a product fix.

@@ -1,0 +1,70 @@
+name: Bug report
+description: Report a failure after Connect-SPOServiceCrossPlatform succeeds, a cmdlet that does not work, or a build error.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a report. Please make sure no one has reported the same issue before opening a new one.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you run, and what was the error or unexpected behavior?
+      placeholder: |
+        Running `Get-SPOTenant` after `Connect-SPOServiceCrossPlatform` returns ...
+        Expected: tenant properties.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: The shortest sequence of commands that shows the issue.
+      render: powershell
+    validations:
+      required: true
+
+  - type: textarea
+    id: error
+    attributes:
+      label: Full error
+      description: Copy the full error output, ideally captured with `$ErrorActionPreference = 'Stop'` and `-ErrorAction Stop`.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: ps-version
+    attributes:
+      label: PowerShell version
+      description: Output of `$PSVersionTable.PSVersion`.
+    validations:
+      required: true
+
+  - type: input
+    id: spo-module-version
+    attributes:
+      label: Microsoft.Online.SharePoint.PowerShell version
+      description: Output of `(Get-Module Microsoft.Online.SharePoint.PowerShell -ListAvailable | Sort-Object Version -Descending | Select -First 1).Version`.
+    validations:
+      required: true
+
+  - type: input
+    id: module-version
+    attributes:
+      label: SPOService.CrossPlatform version
+      description: Output of `(Get-Module SPOService.CrossPlatform).Version`. If installed from source, include the commit SHA.
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      description: "e.g. macOS 14.5 (arm64), Ubuntu 22.04"
+    validations:
+      required: true
