@@ -25,6 +25,12 @@ independently.
   org-assets reimplementation, direct `ProcessQuery`). All now
   superseded by the shim; kept for context.
 
+- [`04-native-session-and-interactive-auth.md`](04-native-session-and-interactive-auth.md)
+  — follow-up investigation proving that native `OAuthSession` is viable
+  on Unix once the transport defect is neutralized, and that interactive
+  `-UseSystemBrowser` works on `pwsh 7.6+` even though it fails in
+  `pwsh 7.5.x`.
+
 ## Artifacts
 
 Preserved under [`artifacts/`](artifacts/):
@@ -36,6 +42,7 @@ Preserved under [`artifacts/`](artifacts/):
 | [`Connect-PnPSPOWorkaround.ps1`](artifacts/Connect-PnPSPOWorkaround.ps1) | Cert-based `Connect-PnPOnline` wrapper. PnP's newer SPC runtime is immune to defect #2, so this was the working auth path during the investigation. |
 | [`SPOOrgAssetsMacWorkaround.ps1`](artifacts/SPOOrgAssetsMacWorkaround.ps1) | `Get-`/`Add-`/`Remove-SPOOrgAssetsLibrary` reimplemented on top of PnP's `ClientContext`, calling the underlying Tenant CSOM methods directly. |
 | [`Invoke-SPOBrandCenterDeactivation.ps1`](artifacts/Invoke-SPOBrandCenterDeactivation.ps1) | Deactivates Brand Center by serializing the CSOM body via `ClientRequest.SetupQuery()` and POSTing it with `Invoke-WebRequest`, bypassing the runtime HTTP pipeline. Was necessary before the shim existed because PnP's 16.1.0.0 `Tenant` type does not expose `DeactivateBrandCenterFeatures()`. |
+| [`Test-NativeOAuthSessionSmoke.ps1`](artifacts/Test-NativeOAuthSessionSmoke.ps1) | Direct reflection-based smoke helper for native `OAuthSession` on Unix. Can exercise either certificate auth or `-UseSystemBrowser`, injects the resulting session into a shimmed `CmdLetContext`, sets `SPOService.CurrentService`, and runs `Get-SPOTenant`. |
 
 None of these are recommended for production use once the shim is in
 place. Use the official SPO cmdlets after `Connect-SPOServiceCrossPlatform` instead.

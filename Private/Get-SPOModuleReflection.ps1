@@ -14,6 +14,7 @@ function Get-SPOModuleReflection {
         ModuleBase       = $moduleBase
         Assembly         = $asm
         CmdLetContext    = $asm.GetType('Microsoft.Online.SharePoint.PowerShell.CmdLetContext')
+        OAuthSession     = $asm.GetType('Microsoft.Online.SharePoint.PowerShell.OAuthSession')
         SPOService       = $asm.GetType('Microsoft.Online.SharePoint.PowerShell.SPOService')
         SPOServiceHelper = $asm.GetType('Microsoft.Online.SharePoint.PowerShell.SPOServiceHelper')
     }

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Raised the supported PowerShell floor to `7.6+`.
+- Switched the connect path from a custom app-only MSAL token closure to
+  reflected native `OAuthSession` wiring.
+- Added native Unix interactive auth via `-UseSystemBrowser`.
+- Kept certificate-based auth, now through native `OAuthSession` plus
+  `SignInWithCert()`.
+- Kept the native shim as the transport repair layer.
+
 ## [0.1.0] - 2026-04-21
 
 Initial release. Scope: PowerShell 7.4+ on macOS/Linux, certificate-based
