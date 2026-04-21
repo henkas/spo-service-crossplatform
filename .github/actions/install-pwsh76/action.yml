@@ -49,11 +49,15 @@ runs:
         ARCHIVE_PATH="$RUNNER_TEMP/$ARCHIVE_NAME"
         CHECKSUMS_URL="https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/hashes.sha256"
         CHECKSUMS_PATH="$RUNNER_TEMP/powershell-${PWSH_VERSION}-hashes.sha256"
+        CHECKSUMS_UTF8_PATH="$RUNNER_TEMP/powershell-${PWSH_VERSION}-hashes.utf8.sha256"
 
         curl -fsSL -o "$ARCHIVE_PATH" "$URL"
         curl -fsSL -o "$CHECKSUMS_PATH" "$CHECKSUMS_URL"
 
-        EXPECTED_HASH="$(grep " ${ARCHIVE_NAME}\$" "$CHECKSUMS_PATH" | awk '{print $1}')"
+        # PowerShell's release checksum file is UTF-16LE and prefixes filenames
+        # with '*', so normalize it to UTF-8 before matching the selected asset.
+        iconv -f UTF-16LE -t UTF-8 "$CHECKSUMS_PATH" | tr -d '\r' > "$CHECKSUMS_UTF8_PATH"
+        EXPECTED_HASH="$(awk -v archive="$ARCHIVE_NAME" '$2 { sub(/^\*/, "", $2); if ($2 == archive) { print $1; exit } }' "$CHECKSUMS_UTF8_PATH")"
         if [ -z "$EXPECTED_HASH" ]; then
           echo "Failed to find SHA256 for $ARCHIVE_NAME in $CHECKSUMS_URL" >&2
           exit 1

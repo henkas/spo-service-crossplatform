@@ -8,19 +8,7 @@ function New-SPOCertificateOAuthSession {
         $Reflection,
 
         [Parameter(Mandatory = $true)]
-        [string]$Authority,
-
-        [Parameter(Mandatory = $true)]
-        [System.Security.Cryptography.X509Certificates.X509Certificate2]$Certificate,
-
-        [Parameter(Mandatory = $true)]
-        [string]$TenantId,
-
-        [Parameter(Mandatory = $true)]
-        [string]$ClientId,
-
-        [Parameter(Mandatory = $true)]
-        [uri]$Url
+        [hashtable]$Settings
     )
 
     $oauthSession = $Reflection.OAuthSession.GetConstructor(
@@ -33,15 +21,15 @@ function New-SPOCertificateOAuthSession {
             [string]
         ),
         $null).Invoke(@(
-            $Authority,
-            $Certificate,
-            $TenantId,
-            $ClientId
+            $Settings.Authority,
+            $Settings.Certificate,
+            $Settings.TenantId,
+            $Settings.ClientId
         ))
 
     $Reflection.OAuthSession.GetMethod(
         'SignInWithCert',
-        [Reflection.BindingFlags]'Public,NonPublic,Instance').Invoke($oauthSession, @($Url.AbsoluteUri))
+        [Reflection.BindingFlags]'Public,NonPublic,Instance').Invoke($oauthSession, @($Settings.Url.AbsoluteUri))
 
     return $oauthSession
 }

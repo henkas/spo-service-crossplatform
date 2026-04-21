@@ -141,20 +141,24 @@ function Connect-SPOServiceCrossPlatform {
 
             $oauthSession = New-SPOCertificateOAuthSession `
                 -Reflection $reflection `
-                -Authority $authority `
-                -Certificate $cert `
-                -TenantId $TenantId `
-                -ClientId $ClientId `
-                -Url $Url
+                -Settings @{
+                    Authority   = $authority
+                    Certificate = $cert
+                    TenantId    = $TenantId
+                    ClientId    = $ClientId
+                    Url         = $Url
+                }
         }
         'CertificateObject' {
             $oauthSession = New-SPOCertificateOAuthSession `
                 -Reflection $reflection `
-                -Authority $authority `
-                -Certificate $Certificate `
-                -TenantId $TenantId `
-                -ClientId $ClientId `
-                -Url $Url
+                -Settings @{
+                    Authority   = $authority
+                    Certificate = $Certificate
+                    TenantId    = $TenantId
+                    ClientId    = $ClientId
+                    Url         = $Url
+                }
         }
         'EnvFile' {
             $envMap = Get-LocalEnvMap -Path $EnvPath
@@ -176,11 +180,13 @@ function Connect-SPOServiceCrossPlatform {
             $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfxPath, (ConvertTo-SecureString $envMap.password -AsPlainText -Force))
             $oauthSession = New-SPOCertificateOAuthSession `
                 -Reflection $reflection `
-                -Authority $authority `
-                -Certificate $cert `
-                -TenantId $TenantId `
-                -ClientId $ClientId `
-                -Url $Url
+                -Settings @{
+                    Authority   = $authority
+                    Certificate = $cert
+                    TenantId    = $TenantId
+                    ClientId    = $ClientId
+                    Url         = $Url
+                }
         }
         'SystemBrowser' {
             $oauthSession = New-SPOSystemBrowserOAuthSession `
