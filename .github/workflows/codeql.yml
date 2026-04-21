@@ -38,7 +38,7 @@ jobs:
               -Scope CurrentUser -Force -AllowClobber
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        uses: github/codeql-action/init@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
         with:
           languages: csharp
           build-mode: manual
@@ -49,6 +49,6 @@ jobs:
         run: dotnet build -c Release src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
 
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        uses: github/codeql-action/analyze@95e58e9a2cdfd71adc6e0353d5c52f41a045d225 # v4.35.2
         with:
           category: "/language:csharp"
