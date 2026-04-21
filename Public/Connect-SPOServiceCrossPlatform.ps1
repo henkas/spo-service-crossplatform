@@ -74,6 +74,12 @@ function Connect-SPOServiceCrossPlatform {
     module; shadows the broken native cmdlet for the same session).
 #>
     [CmdletBinding(DefaultParameterSetName = 'CertificatePath')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSAvoidUsingConvertToSecureStringWithPlainText', '',
+        Justification = 'The .env file is already plaintext on disk; ConvertTo-SecureString here is the mandated bridge to X509Certificate2, not a new plaintext surface.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSReviewUnusedParameter', 'UseEnvFile',
+        Justification = 'Switch parameter selects the EnvFile ParameterSetName; runtime routing is via $PSCmdlet.ParameterSetName.')]
     param(
         [Parameter(Mandatory = $true)]
         [uri]$Url,
@@ -162,7 +168,12 @@ function Connect-SPOServiceCrossPlatform {
     $context.WebRequestExecutorFactory = [SPOService.CrossPlatform.HttpClientExecutorFactory]::new()
 
     $context.add_ExecutingWebRequest([System.EventHandler[Microsoft.SharePoint.Client.WebRequestEventArgs]]{
-        param($s, $ea)
+        param($evSource, $ea)
+        # The delegate signature requires (sender, args); sender is unused.
+        # Consumed here so PSScriptAnalyzer's PSReviewUnusedParameter rule
+        # does not fire. The parameter is not named $sender because that is
+        # PowerShell's automatic variable for Register-ObjectEvent scripts.
+        $null = $evSource
         $ea.WebRequestExecutor.RequestHeaders['Authorization'] = "Bearer $(& $tokenProvider)"
     }.GetNewClosure())
 
