@@ -1,0 +1,29 @@
+version: 2
+
+updates:
+  # NuGet dependencies for the native shim (SPOService.CrossPlatform.csproj).
+  # The Microsoft.SharePoint.Client.Runtime reference is resolved from the
+  # installed SPO module at build time (see csproj ResolveSpoRuntime target)
+  # and is not a PackageReference, so Dependabot will not raise PRs for it —
+  # that is intentional; we pick it up via the user-installed SPO module
+  # version.
+  - package-ecosystem: "nuget"
+    directory: "/src/SPOService.CrossPlatform"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "nuget"
+
+  # Actions referenced in .github/workflows/*.yml.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"

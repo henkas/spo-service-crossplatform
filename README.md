@@ -1,9 +1,10 @@
 # SPOService.CrossPlatform
 
-[![build](https://github.com/nstophq/spo-service-crossplatform/actions/workflows/build.yml/badge.svg)](https://github.com/nstophq/spo-service-crossplatform/actions/workflows/build.yml)
-[![PSGallery](https://img.shields.io/powershellgallery/v/SPOService.CrossPlatform)](https://www.powershellgallery.com/packages/SPOService.CrossPlatform)
-[![PSGallery downloads](https://img.shields.io/powershellgallery/dt/SPOService.CrossPlatform)](https://www.powershellgallery.com/packages/SPOService.CrossPlatform)
-[![License](https://img.shields.io/github/license/nstophq/spo-service-crossplatform)](LICENSE)
+[![PSGallery Version](https://img.shields.io/powershellgallery/v/SPOService.CrossPlatform?style=flat&logo=data:image/svg%2Bxml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSIzOCIgdmlld0JveD0iMCAwIDQxIDM4Ij4NCiAgPHRpdGxlPkFydGJvYXJkIDE8L3RpdGxlPg0KICA8ZyBpZD0iZzM3NzIiPg0KICAgIDxnIGlkPSJnMzc3MCI+DQogICAgICA8cGF0aCBpZD0icGF0aDM3NjgiIGQ9Ik0zOS41LDMuODVIOS4yNDlhMi4yMzcsMi4yMzcsMCwwLDAtMi4xLDEuN2wtNi4xLDI2LjZhMS4zLDEuMywwLDAsMCwxLjMsMS43aDMwLjNhMi4yMzcsMi4yMzcsMCwwLDAsMi4xLTEuN2w2LjEtMjYuNTVBMS4zNTUsMS4zNTUsMCwwLDAsMzkuNSwzLjg1WiIgZmlsbD0iIzAwNzJjNiIvPg0KICAgIDwvZz4NCiAgPC9nPg0KICA8cGF0aCBpZD0icGF0aDM3NzgiIGQ9Ik0yNC40LDE5LjNjLS4xLjMtLjQuNS0uOS45TDkuOSwzMGExLjg2OCwxLjg2OCwwLDAsMS0yLjQtLjQsMS43MywxLjczLDAsMCwxLC4zLTIuNGwxMi4zLTguOXYtLjJMMTIuNCw5LjlhMS43MiwxLjcyLDAsMCwxLC4xLTIuNCwxLjYzMywxLjYzMywwLDAsMSwyLjQsMGw5LjMsOS45QTEuMywxLjMsMCwwLDEsMjQuNCwxOS4zWiIgZmlsbD0iI2ZmZiIvPg0KICA8cGF0aCBpZD0icGF0aDM3ODAiIGQ9Ik0xOS44LDI2LjdoNy40YTEuNSwxLjUsMCwxLDEsMCwzSDE5LjhhMS41LDEuNSwwLDEsMSwwLTNaIiBmaWxsPSIjZmZmIi8+DQo8L3N2Zz4NCg==)](https://www.powershellgallery.com/packages/SPOService.CrossPlatform)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/nstophq/spo-service-crossplatform/build.yml?branch=main&style=flat&logo=github&logoColor=%23fff)](https://github.com/nstophq/spo-service-crossplatform/actions/workflows/build.yml)
+[![GitHub Issues](https://img.shields.io/github/issues/nstophq/spo-service-crossplatform?style=flat&logo=github&logoColor=%23fff)](https://github.com/nstophq/spo-service-crossplatform/issues)
+[![GitHub License](https://img.shields.io/github/license/nstophq/spo-service-crossplatform?style=flat&logo=github&logoColor=%23fff)](LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/release/nstophq/spo-service-crossplatform?style=flat&logo=github&logoColor=%23fff)](https://github.com/nstophq/spo-service-crossplatform/releases/latest)
 
 **macOS / Linux only.** Cross-platform replacement for `Connect-SPOService`
 that lets the official
@@ -191,13 +192,41 @@ fails after `Connect-SPOServiceCrossPlatform`), please include:
 
 ## License
 
-[MIT](LICENSE). The module links against Microsoft-owned assemblies
-(`Microsoft.SharePoint.Client.Runtime.dll` and friends) at runtime but does
-not redistribute them — install them via `Microsoft.Online.SharePoint.PowerShell`
-as usual.
+This project is licensed under the [MIT License](LICENSE).
+
+It is an interoperability layer, not a fork. Runtime dependencies retain
+their own licenses and are not bundled, redistributed, or modified by this
+package — consumers install them via PSGallery as usual:
+
+- [`Microsoft.Online.SharePoint.PowerShell`](https://www.powershellgallery.com/packages/Microsoft.Online.SharePoint.PowerShell)
+  — Apache License 2.0 (ships the `Microsoft.SharePoint.Client.Runtime`
+  CSOM assemblies referenced at build and load time).
+- [`Microsoft.Identity.Client`](https://github.com/AzureAD/microsoft-authentication-library-for-dotnet)
+  (MSAL.NET) — MIT License (pulled in transitively via the SPO module;
+  used for certificate-based app-only auth and token caching).
+
+Under Apache License 2.0 § 1, a work that "remain[s] separable from, or
+merely link[s] (or bind[s] by name) to the interfaces of, the Work" is
+explicitly not a Derivative Work. `SPOService.CrossPlatform` binds to the
+SPO module's interfaces by reflection and compile-time reference, copies
+no Apache 2.0 source, and redistributes no Apache 2.0 binaries; it is
+therefore not a Derivative Work under that definition. See the [`NOTICE`](NOTICE)
+file for the full third-party attribution.
 
 ## Related upstream issue
 
 - [`SharePoint/sp-dev-docs#9434`](https://github.com/SharePoint/sp-dev-docs/issues/9434)
   — open bug report covering `Connect-SPOService` failures on
   macOS / Linux.
+
+---
+
+<p align="center">
+  <sub>An open source module published by</sub>
+  <a href="https://nstop.app">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://nstop.app/img/wordmark-light.png">
+      <img src="https://nstop.app/img/wordmark-dark.png" alt="nstop" height="18">
+    </picture>
+  </a>
+</p>

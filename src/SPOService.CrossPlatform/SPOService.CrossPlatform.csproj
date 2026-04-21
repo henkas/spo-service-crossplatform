@@ -22,8 +22,13 @@
     Override with /p:SpoRuntimePath=/absolute/path/to/Microsoft.SharePoint.Client.Runtime.dll
     on CI or when the module lives outside the default PowerShell user module path.
 
-    The Reference item is added inside the target because static <ItemGroup> metadata
-    is resolved at project-load time, before this InitialTarget runs.
+    The target runs as an InitialTarget so the Reference item is in place
+    before ResolveReferences / CoreCompile. The <Error> task, however, is
+    scoped to non-restore invocations (NuGet sets MSBuildRestoreSessionId
+    during `dotnet restore`), so GHAS's Automatic Dependency Submission
+    and similar restore-only tooling — which doesn't install the SPO
+    module first — doesn't trip it. Restore ignores file references
+    anyway; only PackageReferences participate in NuGet restore.
   -->
   <Target Name="ResolveSpoRuntime">
     <ItemGroup Condition="'$(SpoRuntimePath)' == ''">
@@ -40,7 +45,7 @@
     <PropertyGroup Condition="'$(SpoRuntimePath)' == '' And '@(_SpoRuntimeCandidate)' != ''">
       <SpoRuntimePath>%(_SpoRuntimeCandidate.FullPath)</SpoRuntimePath>
     </PropertyGroup>
-    <Error Condition="'$(SpoRuntimePath)' == '' Or !Exists('$(SpoRuntimePath)')"
+    <Error Condition="'$(MSBuildRestoreSessionId)' == '' And ('$(SpoRuntimePath)' == '' Or !Exists('$(SpoRuntimePath)'))"
            Text="Could not locate Microsoft.SharePoint.Client.Runtime.dll. Install the module (Install-Module Microsoft.Online.SharePoint.PowerShell) or pass /p:SpoRuntimePath=/absolute/path." />
     <Message Importance="high" Text="Using SPO runtime: $(SpoRuntimePath)" />
     <ItemGroup>

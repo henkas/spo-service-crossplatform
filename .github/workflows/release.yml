@@ -9,20 +9,25 @@ permissions:
   contents: write
 
 # This workflow only reads the pushed tag name (via env) and the checked-out
-# source. It does not evaluate any event-supplied strings inline in run: blocks,
-# so there is no script-injection surface.
+# source. It does not evaluate any event-supplied strings inline in run:
+# blocks, so there is no script-injection surface.
+#
+# Gating: the `publish` job depends on `smoke-test`, which rebuilds and
+# imports the module on macOS + Ubuntu on the tagged commit. This replaces
+# the need for a cross-workflow `build`-is-green check: if the tagged commit
+# cannot build or import, publishing never runs.
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    env:
-      # github.ref_name is the tag name (e.g. v0.1.0). Passed through env so
-      # nothing from the workflow context reaches the shell via ${{ }} inline.
-      TAG_NAME: ${{ github.ref_name }}
+  smoke-test:
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Setup .NET 8
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
         with:
           dotnet-version: '8.0.x'
 
@@ -32,17 +37,86 @@ jobs:
           Install-Module Microsoft.Online.SharePoint.PowerShell `
               -Scope CurrentUser -Force -AllowClobber
 
-      - name: Resolve version from tag
+      - name: Build native shim
+        run: dotnet build -c Release src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
+
+      - name: Import module (smoke test)
+        shell: pwsh
+        run: |
+          Import-Module ./SPOService.CrossPlatform.psd1 -Force -ErrorAction Stop
+          $m = Get-Module SPOService.CrossPlatform
+          if (-not $m) { throw 'Module did not load.' }
+
+          foreach ($cmd in 'Connect-SPOServiceCrossPlatform', 'Disconnect-SPOServiceCrossPlatform') {
+              if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
+                  throw "Expected function missing: $cmd"
+              }
+          }
+          foreach ($alias in 'Connect-SPOService', 'Disconnect-SPOService') {
+              $cmd = Get-Command $alias -ErrorAction Stop
+              if ($cmd.CommandType -ne 'Alias') {
+                  throw "Expected $alias to be an Alias; got $($cmd.CommandType)."
+              }
+              if ($cmd.ResolvedCommand.Name -notmatch 'CrossPlatform$') {
+                  throw "Alias $alias resolves to $($cmd.ResolvedCommand.Name), expected *CrossPlatform."
+              }
+          }
+
+  publish:
+    needs: smoke-test
+    runs-on: ubuntu-latest
+    # Route to the protected environment matching the tag shape:
+    #   v1.2.3       -> PSGallery Publishing  (stable)
+    #   v1.2.3-beta1 -> PSGallery Prerelease
+    # Both environments require approval from @henkas and carry a
+    # PSGALLERY_API_KEY secret scoped to the SPOService.CrossPlatform
+    # package. The environments' own deployment-branch/tag rules ensure a
+    # mis-shaped tag cannot select the wrong environment.
+    environment:
+      name: ${{ contains(github.ref_name, '-') && 'PSGallery Prerelease' || 'PSGallery Publishing' }}
+    env:
+      TAG_NAME: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Microsoft.Online.SharePoint.PowerShell
+        shell: pwsh
+        run: |
+          Install-Module Microsoft.Online.SharePoint.PowerShell `
+              -Scope CurrentUser -Force -AllowClobber
+
+      - name: Resolve version and prerelease from tag
         id: version
         shell: pwsh
         run: |
           $tag = $env:TAG_NAME
           if (-not $tag) { throw 'TAG_NAME env is empty.' }
-          $version = $tag.TrimStart('v')
-          if ($version -notmatch '^\d+\.\d+\.\d+(-[A-Za-z0-9\.\-]+)?$') {
+          if ($tag -notmatch '^v(?<version>\d+\.\d+\.\d+)(-(?<prerelease>[A-Za-z0-9\.\-]+))?$') {
               throw "Refusing to build: tag '$tag' is not semver."
           }
-          "version=$version" >> $env:GITHUB_OUTPUT
+          $version = $Matches.version
+          $preRaw  = $Matches.prerelease
+
+          # PSGallery / NuGet prerelease strings must be alphanumeric; dots
+          # and hyphens are rejected. Strip them: 'beta.1' -> 'beta1',
+          # 'rc-2' -> 'rc2'. If stripping yields empty, fail loudly rather
+          # than silently publish as stable.
+          $prerelease = if ($preRaw) { ($preRaw -replace '[^A-Za-z0-9]', '') } else { '' }
+          if ($preRaw -and -not $prerelease) {
+              throw "Prerelease suffix '$preRaw' reduces to empty after alphanumeric-only filtering."
+          }
+
+          $isPrerelease = if ($prerelease) { 'true' } else { 'false' }
+
+          "version=$version"           >> $env:GITHUB_OUTPUT
+          "prerelease=$prerelease"     >> $env:GITHUB_OUTPUT
+          "isPrerelease=$isPrerelease" >> $env:GITHUB_OUTPUT
+          Write-Host "Resolved: version=$version prerelease='$prerelease' (isPrerelease=$isPrerelease) from tag $tag"
 
       - name: Build native shim
         run: >-
@@ -53,44 +127,159 @@ jobs:
       - name: Assemble module package
         shell: pwsh
         env:
-          MODULE_VERSION: ${{ steps.version.outputs.version }}
+          MODULE_VERSION:    ${{ steps.version.outputs.version }}
+          MODULE_PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
           $version = $env:MODULE_VERSION
+          $pre     = $env:MODULE_PRERELEASE
           if (-not $version) { throw 'MODULE_VERSION env is empty.' }
 
           $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
+          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
           New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
-          Copy-Item -Recurse SPOService.CrossPlatform.psd1, SPOService.CrossPlatform.psm1, Public, Private, LICENSE, README.md -Destination $stage
+          Copy-Item -Recurse `
+              SPOService.CrossPlatform.psd1, SPOService.CrossPlatform.psm1, Public, Private, LICENSE, NOTICE, README.md, CHANGELOG.md `
+              -Destination $stage
 
           $libDir = Join-Path $stage 'lib/net8.0'
           New-Item -ItemType Directory -Force -Path $libDir | Out-Null
           Copy-Item src/SPOService.CrossPlatform/bin/Release/net8.0/SPOService.CrossPlatform.dll -Destination $libDir
 
           $psd1 = Join-Path $stage 'SPOService.CrossPlatform.psd1'
-          (Get-Content $psd1 -Raw) `
-              -replace "ModuleVersion\s*=\s*'[^']*'", "ModuleVersion = '$version'" |
-              Set-Content $psd1
+          $content = Get-Content $psd1 -Raw
+          $content = $content -replace "ModuleVersion\s*=\s*'[^']*'", "ModuleVersion = '$version'"
 
-          Write-Host "Staged module at $stage (version $version)"
+          if ($pre) {
+              # Inject Prerelease into PSData. PSGallery reads this field to
+              # mark the package as a prerelease. The stock manifest has no
+              # Prerelease line; if a future commit adds one, update it in
+              # place rather than duplicating.
+              if ($content -match "Prerelease\s*=\s*'[^']*'") {
+                  $content = $content -replace "Prerelease\s*=\s*'[^']*'", "Prerelease   = '$pre'"
+              } else {
+                  # Insert as the first entry inside the PSData hashtable.
+                  $script:injected = $false
+                  $content = [regex]::Replace(
+                      $content,
+                      '(?<open>PSData\s*=\s*@\{)(?<nl>\r?\n)',
+                      {
+                          param($m)
+                          $script:injected = $true
+                          "$($m.Groups['open'].Value)$($m.Groups['nl'].Value)            Prerelease   = '$pre'$($m.Groups['nl'].Value)"
+                      },
+                      [System.Text.RegularExpressions.RegexOptions]::None,
+                      [TimeSpan]::FromSeconds(2))
+                  if (-not $script:injected) {
+                      throw "Could not locate PSData block in $psd1 to inject Prerelease."
+                  }
+              }
+          }
+
+          Set-Content -Path $psd1 -Value $content -NoNewline
+
+          Write-Host "Staged module at $stage (version $version, prerelease='$pre')"
           Get-ChildItem -Recurse $stage | Select-Object FullName
+
+      - name: Validate staged module (Test-ModuleManifest + import)
+        shell: pwsh
+        run: |
+          # Test-ModuleManifest + Import-Module on the staged layout catches
+          # problems Publish-Module does not: a missing dot-sourced file, a
+          # psm1 runtime error, a DLL probe that fails because lib/net8.0/
+          # is misnamed. Running this before PSGallery publish means a
+          # broken staged artefact fails the workflow instead of shipping
+          # to users.
+          $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
+          $psd1  = Join-Path $stage 'SPOService.CrossPlatform.psd1'
+
+          $manifest = Test-ModuleManifest -Path $psd1
+          Write-Host ("Test-ModuleManifest: {0} {1} Prerelease='{2}'" -f `
+              $manifest.Name, $manifest.Version, $manifest.PrivateData.PSData.Prerelease)
+
+          Import-Module $psd1 -Force -ErrorAction Stop
+          foreach ($cmd in 'Connect-SPOServiceCrossPlatform', 'Disconnect-SPOServiceCrossPlatform') {
+              if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
+                  throw "Staged module missing expected function: $cmd"
+              }
+          }
+          foreach ($alias in 'Connect-SPOService', 'Disconnect-SPOService') {
+              $c = Get-Command $alias -ErrorAction Stop
+              if ($c.ResolvedCommand.Name -notmatch 'CrossPlatform$') {
+                  throw "Staged alias $alias resolves to $($c.ResolvedCommand.Name)."
+              }
+          }
+          Write-Host 'Staged module imports cleanly.'
+
+      - name: Extract release notes from CHANGELOG.md
+        id: notes
+        shell: pwsh
+        env:
+          MODULE_VERSION: ${{ steps.version.outputs.version }}
+          TAG_NAME:       ${{ github.ref_name }}
+        run: |
+          $version = $env:MODULE_VERSION
+          $tag     = $env:TAG_NAME
+          $lines   = Get-Content CHANGELOG.md
+
+          # Prefer a section matching the tag's own version string (supports
+          # per-prerelease entries like '## [0.2.0-beta1]'); fall back to the
+          # numeric version section.
+          $candidates = @()
+          $tagVersion = $tag.TrimStart('v')
+          if ($tagVersion -ne $version) { $candidates += $tagVersion }
+          $candidates += $version
+
+          $body = $null
+          foreach ($candidate in $candidates) {
+              $startMatch = $lines |
+                  Select-String -Pattern ("^\#\#\s+\[" + [regex]::Escape($candidate) + "\]") |
+                  Select-Object -First 1
+              if (-not $startMatch) { continue }
+
+              $start     = $startMatch.LineNumber                   # 1-based
+              $remaining = $lines[$start..($lines.Count - 1)]       # lines AFTER the header
+              $endRel    = ($remaining |
+                  Select-String -Pattern '^\#\#\s+\[' |
+                  Select-Object -First 1).LineNumber
+              $section = if ($endRel) { $remaining[0..($endRel - 2)] } else { $remaining }
+              $body = ($section -join "`n").Trim()
+              if ($body) { break }
+          }
+
+          if (-not $body) {
+              Write-Host "::warning::No CHANGELOG.md entry for $version (or $tag). Release will use auto-generated notes."
+              $body = ''
+          }
+
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -Path $notesPath -Value $body
+
+          $hasNotes = if ($body) { 'true' } else { 'false' }
+          "path=$notesPath"    >> $env:GITHUB_OUTPUT
+          "hasNotes=$hasNotes" >> $env:GITHUB_OUTPUT
 
       - name: Publish to PSGallery
         shell: pwsh
         env:
           PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
         run: |
+          # Fail loudly if the environment secret is missing. Previously this
+          # warned and skipped, which masked a misconfigured environment and
+          # shipped a GitHub release with nothing on PSGallery.
           if (-not $env:PSGALLERY_API_KEY) {
-              Write-Host "::warning::PSGALLERY_API_KEY secret is not set; skipping PSGallery publish."
-              exit 0
+              throw "PSGALLERY_API_KEY is not set on the selected environment. Configure it on 'PSGallery Publishing' and 'PSGallery Prerelease' before tagging."
           }
           $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
           Publish-Module -Path $stage -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
 
-      - name: Attach native DLL to GitHub release
-        uses: softprops/action-gh-release@v2
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
           files: |
             src/SPOService.CrossPlatform/bin/Release/net8.0/SPOService.CrossPlatform.dll
-          draft: false
+          body_path:              ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.hasNotes == 'false' }}
+          prerelease:             ${{ steps.version.outputs.isPrerelease == 'true' }}
+          draft:                  false
           fail_on_unmatched_files: true
