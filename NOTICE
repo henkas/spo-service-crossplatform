@@ -1,0 +1,55 @@
+SPOService.CrossPlatform
+Copyright (c) 2026 nstop Ltd.
+
+This product is licensed under the MIT License; see the accompanying LICENSE
+file. It is an interoperability layer that relies on the following third-party
+components at runtime. None of these are bundled with, redistributed by, or
+modified in this package — consumers install them through standard PowerShell
+Gallery / NuGet channels, and each component retains its own license and
+copyright.
+
+-------------------------------------------------------------------------------
+Microsoft.Online.SharePoint.PowerShell
+-------------------------------------------------------------------------------
+Copyright (c) Microsoft Corporation. All rights reserved.
+Licensed under the Apache License, Version 2.0.
+License text: https://www.apache.org/licenses/LICENSE-2.0
+Package:      https://www.powershellgallery.com/packages/Microsoft.Online.SharePoint.PowerShell
+Upstream:     https://github.com/Azure/azure-powershell/blob/preview/LICENSE.txt
+
+This package is a required runtime dependency. The native shim
+(src/SPOService.CrossPlatform/HttpClientExecutor.cs) references the
+Microsoft.SharePoint.Client.WebRequestExecutor type from
+Microsoft.SharePoint.Client.Runtime.dll, which ships with
+Microsoft.Online.SharePoint.PowerShell. The reference is binary-only and
+resolved from the user's installed module (see csproj: <Private>false</Private>).
+The PowerShell side uses reflection to bind to internal types (CmdLetContext,
+SPOService, SPOServiceHelper) by name.
+
+Under Apache License 2.0 Section 1, "Derivative Works shall not include works
+that remain separable from, or merely link (or bind by name) to the interfaces
+of, the Work". SPOService.CrossPlatform links to these interfaces and does not
+include or modify any Apache 2.0 source.
+
+-------------------------------------------------------------------------------
+Microsoft.Identity.Client (MSAL.NET)
+-------------------------------------------------------------------------------
+Copyright (c) Microsoft Corporation. All rights reserved.
+Licensed under the MIT License.
+License text: https://github.com/AzureAD/microsoft-authentication-library-for-dotnet/blob/main/LICENSE
+Upstream:     https://github.com/AzureAD/microsoft-authentication-library-for-dotnet
+
+Pulled in transitively via Microsoft.Online.SharePoint.PowerShell. Used by
+Connect-SPOServiceCrossPlatform for certificate-based app-only authentication
+(ConfidentialClientApplication) and token caching / refresh. Not redistributed
+by this package.
+
+-------------------------------------------------------------------------------
+Microsoft.SharePoint.Client.Runtime and related CSOM assemblies
+-------------------------------------------------------------------------------
+Copyright (c) Microsoft Corporation. All rights reserved.
+Shipped as part of Microsoft.Online.SharePoint.PowerShell under the same
+Apache License, Version 2.0.
+
+These binaries are required at runtime and are provided by the user's installed
+SPO module. They are not copied, redistributed, or modified by this package.

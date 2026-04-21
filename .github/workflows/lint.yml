@@ -1,0 +1,49 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Only reads the commit checkout and installs PSScriptAnalyzer from PSGallery.
+# No event-supplied strings are interpolated into run: blocks, so there is no
+# script-injection surface.
+jobs:
+  psscriptanalyzer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          Install-Module PSScriptAnalyzer -Scope CurrentUser -Force -MinimumVersion 1.22.0
+          (Get-Module PSScriptAnalyzer -ListAvailable |
+              Sort-Object Version -Descending | Select-Object -First 1).Version |
+              ForEach-Object { Write-Host "PSScriptAnalyzer $_" }
+
+      - name: Run PSScriptAnalyzer
+        shell: pwsh
+        run: |
+          # Scan module sources only. src/ is C#, bin/obj are build output,
+          # docs/ is preserved research notes. PSScriptAnalyzer does not read
+          # YAML so .github/ is effectively untouched either way.
+          $results = Invoke-ScriptAnalyzer -Path . -Recurse -Severity @('Error', 'Warning') |
+              Where-Object { $_.ScriptPath -notmatch '[\\/](bin|obj|src|docs)[\\/]' }
+
+          if ($results) {
+              $results |
+                  Format-Table -AutoSize RuleName, Severity, ScriptName, Line, Message |
+                  Out-String | Write-Host
+
+              $errors   = @($results | Where-Object Severity -eq 'Error')
+              $warnings = @($results | Where-Object Severity -eq 'Warning')
+              Write-Host ("Summary: {0} error(s), {1} warning(s)" -f $errors.Count, $warnings.Count)
+              throw "PSScriptAnalyzer found $($results.Count) issue(s)."
+          }
+
+          Write-Host 'PSScriptAnalyzer: OK'

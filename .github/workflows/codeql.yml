@@ -1,0 +1,64 @@
+name: codeql
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly re-scan so new CodeQL queries catch issues on code that has not
+    # changed. Sunday 03:17 UTC, off-peak and outside PR review traffic.
+    - cron: '17 3 * * 0'
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+# Reads only the checkout. Scans two languages in parallel: csharp builds the
+# native shim (needs the SPO module present for the CSOM reference); powershell
+# is script-only and does not build. No event-supplied strings reach run: blocks.
+jobs:
+  analyze:
+    name: analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: csharp
+            build-mode: manual
+          - language: powershell
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        if: matrix.language == 'csharp'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Microsoft.Online.SharePoint.PowerShell
+        if: matrix.language == 'csharp'
+        shell: pwsh
+        run: |
+          Install-Module Microsoft.Online.SharePoint.PowerShell `
+              -Scope CurrentUser -Force -AllowClobber
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # security-and-quality adds quality rules on top of security-extended.
+          queries: security-and-quality
+
+      - name: Build native shim
+        if: matrix.build-mode == 'manual'
+        run: dotnet build -c Release src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
