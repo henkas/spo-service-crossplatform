@@ -9,7 +9,6 @@ if ($IsWindows) {
 }
 
 $script:ModuleRoot = $PSScriptRoot
-$script:TokenProvider = $null
 
 # Dot-source all Private helpers first, then Public cmdlets.
 foreach ($scope in 'Private', 'Public') {
@@ -19,6 +18,8 @@ foreach ($scope in 'Private', 'Public') {
         . $_.FullName
     }
 }
+
+Assert-SupportedRuntime
 
 # Drop-in aliases matching the names of the broken native cmdlets. PowerShell's
 # command precedence resolves aliases above cmdlets, so `Connect-SPOService`

@@ -9,7 +9,7 @@
 **macOS / Linux only.** Cross-platform replacement for `Connect-SPOService`
 that lets the official
 [`Microsoft.Online.SharePoint.PowerShell`](https://learn.microsoft.com/powershell/sharepoint/sharepoint-online/introduction-sharepoint-online-management-shell)
-cmdlets run unmodified on **PowerShell 7 / .NET 8 on macOS and Linux**.
+cmdlets run unmodified on **PowerShell 7.6 / .NET 10 on macOS and Linux**.
 Importing this module on Windows fails intentionally — use the stock SPO
 module there.
 
@@ -70,11 +70,11 @@ Full root-cause analysis and evidence: [`docs/investigation/`](docs/investigatio
 Install-Module SPOService.CrossPlatform
 ```
 
-The published package includes the prebuilt shim DLL under `lib/net8.0/`.
+The published package includes the prebuilt shim DLL under `bin/net10.0/`.
 
 ### From source
 
-Requires PowerShell 7.4+, .NET 8 SDK, and the SPO module installed (the
+Requires PowerShell 7.6 and the .NET 10 SDK, plus the SPO module installed (the
 shim references its `Microsoft.SharePoint.Client.Runtime.dll`).
 
 ```bash
@@ -92,18 +92,17 @@ pwsh -c 'Import-Module ./SPOService.CrossPlatform.psd1'
 ```
 
 The module auto-discovers the DLL from
-`src/SPOService.CrossPlatform/bin/Release/net8.0/` or `lib/net8.0/`.
+`src/SPOService.CrossPlatform/bin/Release/net10.0/` or `bin/net10.0/`.
 
 ## Authentication
 
-Authentication uses MSAL's `ConfidentialClientApplication` with an app
-registration and a certificate. The app needs **`Sites.FullControl.All`**
-(application permission) on the `Office 365 SharePoint Online` API.
-Admin consent required.
+Authentication uses the native reflected `OAuthSession` model from the
+official SPO module. On Unix, this module keeps the native auth/session
+shape and only replaces the broken CSOM transport.
 
-Three ways to provide credentials:
+Supported auth flows:
 
-### 1. Explicit certificate path (default)
+### 1. Certificate-based app-only auth
 
 ```powershell
 Connect-SPOServiceCrossPlatform `
@@ -144,8 +143,25 @@ Ensure restrictive permissions on the file (`chmod 600 .env`) and never
 commit it. See [`.env.example`](.env.example). For production, prefer
 `Microsoft.PowerShell.SecretManagement` or another secret store.
 
-Token refresh is automatic: MSAL caches tokens, and the executor re-asks on
-every request, so expired tokens are transparently replaced.
+### 4. Interactive system browser
+
+```powershell
+Connect-SPOServiceCrossPlatform `
+    -Url https://contoso-admin.sharepoint.com `
+    -UseSystemBrowser
+```
+
+This is the only interactive mode supported on Unix in this release.
+Embedded-webview interactive auth is intentionally not supported.
+
+> **Azure Cloud Shell is not supported by this flow.** `-UseSystemBrowser`
+> spins up a local HTTP listener on `127.0.0.1` and opens a browser on the
+> host to receive the OAuth redirect. Cloud Shell's session has no local
+> browser and no way to reach the listener from outside the container, so
+> the sign-in hangs until it times out. A future release may add a
+> terminal-only flow (print the authorization URL, let the user open it
+> in their own browser, and paste the final redirect URL back into the
+> terminal) to cover this case; it is not in scope for this release.
 
 ## Disconnecting
 
@@ -153,14 +169,14 @@ every request, so expired tokens are transparently replaced.
 Disconnect-SPOServiceCrossPlatform
 ```
 
-Clears `SPOService.CurrentService` and drops the cached token provider.
+Clears `SPOService.CurrentService`.
 
 ## Compatibility
 
-- PowerShell 7.4+ (the shipped shim targets `net8.0`, matching the .NET 8
-  runtime bundled with `pwsh` 7.4)
+- PowerShell 7.6
+- .NET 10 runtime (bundled with `pwsh` 7.6)
 - macOS (tested on Darwin 25, arm64) and Linux (expected to work on the
-  same .NET 8 runtime — please open an issue with your distro if not)
+  same runtime — please open an issue with your distro if not)
 - `Microsoft.Online.SharePoint.PowerShell` 16.0.23408.12000 or newer
 
 Windows is explicitly unsupported: importing this module on Windows
@@ -170,10 +186,18 @@ throws a terminating error. Windows users should keep using the stock
 
 ### Supported auth flows
 
-Only certificate-based app-only authentication is supported in this
-release, via MSAL's `ConfidentialClientApplication`. Interactive,
-credential, and managed-identity flows exposed by the native
-`Connect-SPOService` are not wired up here yet.
+Supported in this release:
+
+- certificate-based app-only auth
+- system-browser interactive auth via `-UseSystemBrowser`
+
+Not supported in this release:
+
+- embedded-webview interactive auth
+- username/password auth
+- managed identity
+- Azure Cloud Shell (no local browser / no reachable loopback listener;
+  see the note under [Interactive system browser](#4-interactive-system-browser))
 
 ## Contributing
 

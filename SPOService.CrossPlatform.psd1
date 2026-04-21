@@ -1,6 +1,6 @@
 @{
     RootModule           = 'SPOService.CrossPlatform.psm1'
-    ModuleVersion        = '0.1.0'
+    ModuleVersion        = '0.2.0'
 
     # A stable GUID for the module identity. Do not change across releases.
     GUID                 = 'b6e4f2e0-9b57-4f4e-9c1b-0c3a4a6a2a10'
@@ -9,9 +9,9 @@
     CompanyName          = 'nstop Ltd.'
     Copyright            = 'Copyright (c) 2026 nstop Ltd. Released under the MIT License.'
 
-    Description          = 'Cross-platform Connect-SPOService replacement for PowerShell 7 on macOS and Linux only (import fails on Windows). Works around two defects in Microsoft.Online.SharePoint.PowerShell (null Win32 registry dereference in SPOServiceHelper.InstantiateSPOService, and empty-body HTTP requests from the 16.0.0.0 Microsoft.SharePoint.Client.Runtime on .NET Core) so the official SPO cmdlets run unmodified on the repaired CSOM pipeline.'
+    Description          = 'Cross-platform Connect-SPOService replacement for PowerShell 7.6+ on macOS and Linux only (import fails on Windows). Works around the native SPO module registry and CSOM transport defects so the official cmdlets run on a repaired pipeline with native OAuthSession-based certificate and system-browser authentication.'
 
-    PowerShellVersion    = '7.4'
+    PowerShellVersion    = '7.6'
     CompatiblePSEditions = @('Core')
 
     # Consumers must have Microsoft.Online.SharePoint.PowerShell installed.

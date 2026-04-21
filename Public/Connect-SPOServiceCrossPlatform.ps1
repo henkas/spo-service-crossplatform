@@ -24,9 +24,10 @@ function Connect-SPOServiceCrossPlatform {
     (Get-SPOTenant, Get-SPOSite, Get-SPOOrgAssetsLibrary, etc.) work against
     the repaired pipeline transparently.
 
-    Authentication uses MSAL's ConfidentialClientApplication with an app
-    registration certificate. The token provider is hooked onto
-    ExecutingWebRequest so MSAL's own cache handles expiry and refresh.
+    Authentication uses the native reflected OAuthSession model from
+    Microsoft.Online.SharePoint.PowerShell. On Unix, the module keeps the
+    official session shape and only replaces the broken CSOM transport with
+    the HttpClient-based executor shim.
 
 .PARAMETER Url
     The SharePoint admin URL, e.g. https://tenant-admin.sharepoint.com.
@@ -45,6 +46,10 @@ function Connect-SPOServiceCrossPlatform {
 
 .PARAMETER Certificate
     Pre-loaded X509Certificate2 object, as an alternative to CertificatePath.
+
+.PARAMETER UseSystemBrowser
+    Starts native OAuthSession interactive auth using the system browser.
+    This is the only interactive mode supported on Unix.
 
 .PARAMETER UseEnvFile
     Opt in to reading ClientId, TenantId, password (PFX password), and
@@ -66,12 +71,9 @@ function Connect-SPOServiceCrossPlatform {
     Explicit certificate-based auth.
 
 .EXAMPLE
-    Connect-SPOService -Url https://contoso-admin.sharepoint.com -UseEnvFile `
-        -ClientId <guid> -TenantId <guid> `
-        -CertificatePath ./app.pfx -CertificatePassword (Read-Host -AsSecureString)
+    Connect-SPOService -Url https://contoso-admin.sharepoint.com -UseSystemBrowser
 
-    Same as above, using the drop-in alias Connect-SPOService (from this
-    module; shadows the broken native cmdlet for the same session).
+    Launches the native system-browser flow on PowerShell 7.6+.
 #>
     [CmdletBinding(DefaultParameterSetName = 'CertificatePath')]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
@@ -80,6 +82,9 @@ function Connect-SPOServiceCrossPlatform {
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
         'PSReviewUnusedParameter', 'UseEnvFile',
         Justification = 'Switch parameter selects the EnvFile ParameterSetName; runtime routing is via $PSCmdlet.ParameterSetName.')]
+    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
+        'PSReviewUnusedParameter', 'UseSystemBrowser',
+        Justification = 'Switch parameter selects the SystemBrowser ParameterSetName; runtime routing is via $PSCmdlet.ParameterSetName.')]
     param(
         [Parameter(Mandatory = $true)]
         [uri]$Url,
@@ -107,11 +112,24 @@ function Connect-SPOServiceCrossPlatform {
         [Parameter(ParameterSetName = 'EnvFile')]
         [string]$EnvPath = (Join-Path (Get-Location) '.env'),
 
+        [Parameter(Mandatory = $true, ParameterSetName = 'SystemBrowser')]
+        [switch]$UseSystemBrowser,
+
         [string]$ClientTag = ''
     )
 
+    Assert-SupportedRuntime
+
     $reflection = Get-SPOModuleReflection
     Assert-NativeShim
+
+    if (-not (Test-SPOAdminUrlFormat -Url $Url)) {
+        throw "'$($Url.AbsoluteUri)' does not look like a SharePoint tenant admin URL. Use the admin site, e.g. https://<tenant>-admin.sharepoint.com."
+    }
+
+    $context = New-SPOCmdletContext -Reflection $reflection -Url $Url -HostInstance $Host -ClientTag $ClientTag
+
+    $authority = 'https://login.microsoftonline.com/organizations'
 
     switch ($PSCmdlet.ParameterSetName) {
         'CertificatePath' {
@@ -120,9 +138,27 @@ function Connect-SPOServiceCrossPlatform {
             } else {
                 [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath)
             }
+
+            $oauthSession = New-SPOCertificateOAuthSession `
+                -Reflection $reflection `
+                -Settings @{
+                    Authority   = $authority
+                    Certificate = $cert
+                    TenantId    = $TenantId
+                    ClientId    = $ClientId
+                    Url         = $Url
+                }
         }
         'CertificateObject' {
-            $cert = $Certificate
+            $oauthSession = New-SPOCertificateOAuthSession `
+                -Reflection $reflection `
+                -Settings @{
+                    Authority   = $authority
+                    Certificate = $Certificate
+                    TenantId    = $TenantId
+                    ClientId    = $ClientId
+                    Url         = $Url
+                }
         }
         'EnvFile' {
             $envMap = Get-LocalEnvMap -Path $EnvPath
@@ -142,53 +178,33 @@ function Connect-SPOServiceCrossPlatform {
                 throw "Certificate file not found: $pfxPath"
             }
             $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfxPath, (ConvertTo-SecureString $envMap.password -AsPlainText -Force))
+            $oauthSession = New-SPOCertificateOAuthSession `
+                -Reflection $reflection `
+                -Settings @{
+                    Authority   = $authority
+                    Certificate = $cert
+                    TenantId    = $TenantId
+                    ClientId    = $ClientId
+                    Url         = $Url
+                }
+        }
+        'SystemBrowser' {
+            $oauthSession = New-SPOSystemBrowserOAuthSession `
+                -Reflection $reflection `
+                -Authority $authority `
+                -Url $Url
         }
     }
 
-    $resource = "$($Url.Scheme)://$($Url.Host)/.default"
-
-    $app = [Microsoft.Identity.Client.ConfidentialClientApplicationBuilder]::Create($ClientId).
-        WithAuthority("https://login.microsoftonline.com/$TenantId", $false).
-        WithCertificate($cert).
-        Build()
-
-    # MSAL caches and refreshes the token across calls to AcquireTokenForClient,
-    # so re-invoking it from ExecutingWebRequest is cheap and handles expiry.
-    $tokenProvider = {
-        $app.AcquireTokenForClient([string[]]@($resource)).ExecuteAsync().GetAwaiter().GetResult().AccessToken
-    }.GetNewClosure()
-
-    $ctxCtor = $reflection.CmdLetContext.GetConstructor(
-        [Reflection.BindingFlags]'Public,NonPublic,Instance',
-        $null,
-        @([string], [System.Management.Automation.Host.PSHost], [string]),
-        $null)
-    $context = $ctxCtor.Invoke(@($Url.AbsoluteUri, $Host, $ClientTag))
-
-    $context.WebRequestExecutorFactory = [SPOService.CrossPlatform.HttpClientExecutorFactory]::new()
-
-    $context.add_ExecutingWebRequest([System.EventHandler[Microsoft.SharePoint.Client.WebRequestEventArgs]]{
-        param($evSource, $ea)
-        # The delegate signature requires (sender, args); sender is unused.
-        # Consumed here so PSScriptAnalyzer's PSReviewUnusedParameter rule
-        # does not fire. The parameter is not named $sender because that is
-        # PowerShell's automatic variable for Register-ObjectEvent scripts.
-        $null = $evSource
-        $ea.WebRequestExecutor.RequestHeaders['Authorization'] = "Bearer $(& $tokenProvider)"
-    }.GetNewClosure())
-
-    # Reject non-admin URLs (e.g. https://contoso.sharepoint.com) before we mutate
-    # SPOService.CurrentService. SPOServiceHelper.IsTenantAdminSite is the same
-    # check the native module uses.
-    $isAdminMethod = $reflection.SPOServiceHelper.GetMethod(
-        'IsTenantAdminSite',
-        [Reflection.BindingFlags]'Public,NonPublic,Static')
-    if (-not $isAdminMethod) {
-        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.SPOServiceHelper.IsTenantAdminSite is not present in the installed SPO module. Upgrade 'Microsoft.Online.SharePoint.PowerShell' or file an issue."
+    $oauthSessionProp = $reflection.CmdLetContext.GetProperty(
+        'OAuthSession',
+        [Reflection.BindingFlags]'Public,NonPublic,Instance')
+    if (-not $oauthSessionProp) {
+        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.CmdLetContext.OAuthSession is not present in the installed SPO module."
     }
-    if (-not $isAdminMethod.Invoke($null, @($context))) {
-        throw "'$($Url.AbsoluteUri)' is not a SharePoint tenant admin URL. Use the admin site, e.g. https://<tenant>-admin.sharepoint.com."
-    }
+    $oauthSessionProp.SetValue($context, $oauthSession)
+
+    Assert-SPOAdminSite -Reflection $reflection -Context $context -Url $Url
 
     $svcCtor = $reflection.SPOService.GetConstructor(
         [Reflection.BindingFlags]'Public,NonPublic,Instance',
@@ -199,8 +215,4 @@ function Connect-SPOServiceCrossPlatform {
 
     $currentServiceProp = $reflection.SPOService.GetProperty('CurrentService', [Reflection.BindingFlags]'Public,NonPublic,Static')
     $currentServiceProp.SetValue($null, $service)
-
-    # Set module-scope token handle only after the full connect succeeds, so a
-    # failed Connect-* leaves no stale state behind for Disconnect-* to chase.
-    $script:TokenProvider = $tokenProvider
 }

@@ -26,10 +26,19 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Setup .NET 8
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
+
+      - name: Install PowerShell 7.6
+        uses: ./.github/actions/install-pwsh76
+
+      - name: Show toolchain
+        shell: pwsh
+        run: |
+          Write-Host "pwsh $($PSVersionTable.PSVersion) on $([System.Runtime.InteropServices.RuntimeInformation]::FrameworkDescription)"
+          dotnet --version
 
       - name: Install Microsoft.Online.SharePoint.PowerShell
         shell: pwsh
@@ -39,6 +48,10 @@ jobs:
 
       - name: Build native shim
         run: dotnet build -c Release src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
+
+      - name: Run module contract tests
+        shell: pwsh
+        run: ./tests/ModuleContract.Tests.ps1
 
       - name: Import module (smoke test)
         shell: pwsh
@@ -79,10 +92,13 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Setup .NET 8
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
+
+      - name: Install PowerShell 7.6
+        uses: ./.github/actions/install-pwsh76
 
       - name: Install Microsoft.Online.SharePoint.PowerShell
         shell: pwsh
@@ -123,93 +139,6 @@ jobs:
           dotnet build -c Release
           /p:Version=${{ steps.version.outputs.version }}
           src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
-
-      - name: Assemble module package
-        shell: pwsh
-        env:
-          MODULE_VERSION:    ${{ steps.version.outputs.version }}
-          MODULE_PRERELEASE: ${{ steps.version.outputs.prerelease }}
-        run: |
-          $version = $env:MODULE_VERSION
-          $pre     = $env:MODULE_PRERELEASE
-          if (-not $version) { throw 'MODULE_VERSION env is empty.' }
-
-          $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
-          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-
-          Copy-Item -Recurse `
-              SPOService.CrossPlatform.psd1, SPOService.CrossPlatform.psm1, Public, Private, LICENSE, NOTICE, README.md, CHANGELOG.md `
-              -Destination $stage
-
-          $libDir = Join-Path $stage 'lib/net8.0'
-          New-Item -ItemType Directory -Force -Path $libDir | Out-Null
-          Copy-Item src/SPOService.CrossPlatform/bin/Release/net8.0/SPOService.CrossPlatform.dll -Destination $libDir
-
-          $psd1 = Join-Path $stage 'SPOService.CrossPlatform.psd1'
-          $content = Get-Content $psd1 -Raw
-          $content = $content -replace "ModuleVersion\s*=\s*'[^']*'", "ModuleVersion = '$version'"
-
-          if ($pre) {
-              # Inject Prerelease into PSData. PSGallery reads this field to
-              # mark the package as a prerelease. The stock manifest has no
-              # Prerelease line; if a future commit adds one, update it in
-              # place rather than duplicating.
-              if ($content -match "Prerelease\s*=\s*'[^']*'") {
-                  $content = $content -replace "Prerelease\s*=\s*'[^']*'", "Prerelease   = '$pre'"
-              } else {
-                  # Insert as the first entry inside the PSData hashtable.
-                  $script:injected = $false
-                  $content = [regex]::Replace(
-                      $content,
-                      '(?<open>PSData\s*=\s*@\{)(?<nl>\r?\n)',
-                      {
-                          param($m)
-                          $script:injected = $true
-                          "$($m.Groups['open'].Value)$($m.Groups['nl'].Value)            Prerelease   = '$pre'$($m.Groups['nl'].Value)"
-                      },
-                      [System.Text.RegularExpressions.RegexOptions]::None,
-                      [TimeSpan]::FromSeconds(2))
-                  if (-not $script:injected) {
-                      throw "Could not locate PSData block in $psd1 to inject Prerelease."
-                  }
-              }
-          }
-
-          Set-Content -Path $psd1 -Value $content -NoNewline
-
-          Write-Host "Staged module at $stage (version $version, prerelease='$pre')"
-          Get-ChildItem -Recurse $stage | Select-Object FullName
-
-      - name: Validate staged module (Test-ModuleManifest + import)
-        shell: pwsh
-        run: |
-          # Test-ModuleManifest + Import-Module on the staged layout catches
-          # problems Publish-Module does not: a missing dot-sourced file, a
-          # psm1 runtime error, a DLL probe that fails because lib/net8.0/
-          # is misnamed. Running this before PSGallery publish means a
-          # broken staged artefact fails the workflow instead of shipping
-          # to users.
-          $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
-          $psd1  = Join-Path $stage 'SPOService.CrossPlatform.psd1'
-
-          $manifest = Test-ModuleManifest -Path $psd1
-          Write-Host ("Test-ModuleManifest: {0} {1} Prerelease='{2}'" -f `
-              $manifest.Name, $manifest.Version, $manifest.PrivateData.PSData.Prerelease)
-
-          Import-Module $psd1 -Force -ErrorAction Stop
-          foreach ($cmd in 'Connect-SPOServiceCrossPlatform', 'Disconnect-SPOServiceCrossPlatform') {
-              if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
-                  throw "Staged module missing expected function: $cmd"
-              }
-          }
-          foreach ($alias in 'Connect-SPOService', 'Disconnect-SPOService') {
-              $c = Get-Command $alias -ErrorAction Stop
-              if ($c.ResolvedCommand.Name -notmatch 'CrossPlatform$') {
-                  throw "Staged alias $alias resolves to $($c.ResolvedCommand.Name)."
-              }
-          }
-          Write-Host 'Staged module imports cleanly.'
 
       - name: Extract release notes from CHANGELOG.md
         id: notes
@@ -259,6 +188,121 @@ jobs:
           "path=$notesPath"    >> $env:GITHUB_OUTPUT
           "hasNotes=$hasNotes" >> $env:GITHUB_OUTPUT
 
+      - name: Assemble module package
+        shell: pwsh
+        env:
+          MODULE_VERSION:      ${{ steps.version.outputs.version }}
+          MODULE_PRERELEASE:   ${{ steps.version.outputs.prerelease }}
+          RELEASE_NOTES_PATH:  ${{ steps.notes.outputs.path }}
+        run: |
+          $version = $env:MODULE_VERSION
+          $pre     = $env:MODULE_PRERELEASE
+          if (-not $version) { throw 'MODULE_VERSION env is empty.' }
+
+          $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
+          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+
+          Copy-Item -Recurse `
+              SPOService.CrossPlatform.psd1, SPOService.CrossPlatform.psm1, Public, Private, LICENSE, NOTICE, README.md, CHANGELOG.md `
+              -Destination $stage
+
+          $binDir = Join-Path $stage 'bin/net10.0'
+          New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+          Copy-Item src/SPOService.CrossPlatform/bin/Release/net10.0/SPOService.CrossPlatform.dll -Destination $binDir
+
+          $psd1 = Join-Path $stage 'SPOService.CrossPlatform.psd1'
+          $content = Get-Content $psd1 -Raw
+          $content = $content -replace "ModuleVersion\s*=\s*'[^']*'", "ModuleVersion = '$version'"
+
+          $releaseNotes = if ($env:RELEASE_NOTES_PATH -and (Test-Path $env:RELEASE_NOTES_PATH)) {
+              Get-Content $env:RELEASE_NOTES_PATH -Raw
+          } else {
+              ''
+          }
+
+          if ($releaseNotes -match "'@") {
+              throw "Release notes contain the sequence ''@', which cannot be embedded safely in the staged module manifest."
+          }
+
+          $releaseNotesLiteral = if ($releaseNotes) {
+@"
+ReleaseNotes = @'
+$releaseNotes
+'@
+"@
+          } else {
+              "ReleaseNotes = ''"
+          }
+          $content = $content -replace "ReleaseNotes\s*=\s*'[^']*'", $releaseNotesLiteral
+
+          if ($pre) {
+              # Inject Prerelease into PSData. PSGallery reads this field to
+              # mark the package as a prerelease. The stock manifest has no
+              # Prerelease line; if a future commit adds one, update it in
+              # place rather than duplicating.
+              if ($content -match "Prerelease\s*=\s*'[^']*'") {
+                  $content = $content -replace "Prerelease\s*=\s*'[^']*'", "Prerelease   = '$pre'"
+              } else {
+                  # Insert as the first entry inside the PSData hashtable.
+                  $script:injected = $false
+                  $content = [regex]::Replace(
+                      $content,
+                      '(?<open>PSData\s*=\s*@\{)(?<nl>\r?\n)',
+                      {
+                          param($m)
+                          $script:injected = $true
+                          "$($m.Groups['open'].Value)$($m.Groups['nl'].Value)            Prerelease   = '$pre'$($m.Groups['nl'].Value)"
+                      },
+                      [System.Text.RegularExpressions.RegexOptions]::None,
+                      [TimeSpan]::FromSeconds(2))
+                  if (-not $script:injected) {
+                      throw "Could not locate PSData block in $psd1 to inject Prerelease."
+                  }
+              }
+          }
+
+          Set-Content -Path $psd1 -Value $content -NoNewline
+
+          Write-Host "Staged module at $stage (version $version, prerelease='$pre')"
+          Get-ChildItem -Recurse $stage | Select-Object FullName
+
+      - name: Validate staged module (Test-ModuleManifest + import)
+        shell: pwsh
+        run: |
+          # Test-ModuleManifest + Import-Module on the staged layout catches
+          # problems Publish-Module does not: a missing dot-sourced file, a
+          # psm1 runtime error, a DLL probe that fails because bin/net10.0/
+          # is misnamed. Running this before PSGallery publish means a
+          # broken staged artefact fails the workflow instead of shipping
+          # to users.
+          $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
+          $psd1  = Join-Path $stage 'SPOService.CrossPlatform.psd1'
+
+          foreach ($required in 'README.md', 'LICENSE', 'NOTICE', 'bin/net10.0/SPOService.CrossPlatform.dll') {
+              if (-not (Test-Path (Join-Path $stage $required))) {
+                  throw "Staged module is missing expected path: $required"
+              }
+          }
+
+          $manifest = Test-ModuleManifest -Path $psd1
+          Write-Host ("Test-ModuleManifest: {0} {1} Prerelease='{2}'" -f `
+              $manifest.Name, $manifest.Version, $manifest.PrivateData.PSData.Prerelease)
+
+          Import-Module $psd1 -Force -ErrorAction Stop
+          foreach ($cmd in 'Connect-SPOServiceCrossPlatform', 'Disconnect-SPOServiceCrossPlatform') {
+              if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
+                  throw "Staged module missing expected function: $cmd"
+              }
+          }
+          foreach ($alias in 'Connect-SPOService', 'Disconnect-SPOService') {
+              $c = Get-Command $alias -ErrorAction Stop
+              if ($c.ResolvedCommand.Name -notmatch 'CrossPlatform$') {
+                  throw "Staged alias $alias resolves to $($c.ResolvedCommand.Name)."
+              }
+          }
+            Write-Host 'Staged module imports cleanly.'
+
       - name: Publish to PSGallery
         shell: pwsh
         env:
@@ -294,7 +338,7 @@ jobs:
           IS_PRERELEASE: ${{ steps.version.outputs.isPrerelease }}
         run: |
           set -euo pipefail
-          ASSET="src/SPOService.CrossPlatform/bin/Release/net8.0/SPOService.CrossPlatform.dll"
+          ASSET="src/SPOService.CrossPlatform/bin/Release/net10.0/SPOService.CrossPlatform.dll"
           if [ ! -f "$ASSET" ]; then
             echo "Expected release asset not found: $ASSET" >&2
             exit 1

@@ -17,7 +17,6 @@ function Disconnect-SPOServiceCrossPlatform {
     # just to tear down state.
     $module = Get-Module Microsoft.Online.SharePoint.PowerShell | Select-Object -First 1
     if (-not $module) {
-        $script:TokenProvider = $null
         return
     }
 
@@ -26,5 +25,4 @@ function Disconnect-SPOServiceCrossPlatform {
     $svcType = $asm.GetType('Microsoft.Online.SharePoint.PowerShell.SPOService')
     $currentServiceProp = $svcType.GetProperty('CurrentService', [Reflection.BindingFlags]'Public,NonPublic,Static')
     $currentServiceProp.SetValue($null, $null)
-    $script:TokenProvider = $null
 }
