@@ -123,6 +123,38 @@ function Connect-SPOServiceCrossPlatform {
     $reflection = Get-SPOModuleReflection
     Assert-NativeShim
 
+    # Build the context and validate the URL *before* any auth call so that a
+    # typo'd or non-admin URL fails fast without launching a browser window or
+    # hitting a remote AAD endpoint. SPOServiceHelper.IsTenantAdminSite is the
+    # same check the native module uses.
+    $ctxCtor = $reflection.CmdLetContext.GetConstructor(
+        [Reflection.BindingFlags]'Public,NonPublic,Instance',
+        $null,
+        @([string], [System.Management.Automation.Host.PSHost], [string]),
+        $null)
+    $context = $ctxCtor.Invoke(@($Url.AbsoluteUri, $Host, $ClientTag))
+    $context.WebRequestExecutorFactory = [SPOService.CrossPlatform.HttpClientExecutorFactory]::new()
+
+    $isAdminMethod = $reflection.SPOServiceHelper.GetMethod(
+        'IsTenantAdminSite',
+        [Reflection.BindingFlags]'Public,NonPublic,Static')
+    if (-not $isAdminMethod) {
+        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.SPOServiceHelper.IsTenantAdminSite is not present in the installed SPO module. Upgrade 'Microsoft.Online.SharePoint.PowerShell' or file an issue."
+    }
+
+    # IsTenantAdminSite hits the URL over the network, so a typo or a non-SPO
+    # host surfaces as a wrapped web exception rather than a clean bool. Either
+    # path -- exception or a false return -- means "do not proceed to auth."
+    try {
+        $isAdmin = $isAdminMethod.Invoke($null, @($context))
+    } catch {
+        $inner = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
+        throw "Could not verify '$($Url.AbsoluteUri)' as a SharePoint tenant admin URL. Check for typos -- the admin site looks like https://<tenant>-admin.sharepoint.com. Underlying error: $inner"
+    }
+    if (-not $isAdmin) {
+        throw "'$($Url.AbsoluteUri)' is not a SharePoint tenant admin URL. Use the admin site, e.g. https://<tenant>-admin.sharepoint.com."
+    }
+
     $authority = 'https://login.microsoftonline.com/organizations'
     $oauthSession = $null
 
@@ -170,6 +202,15 @@ function Connect-SPOServiceCrossPlatform {
                 @([string]),
                 $null).Invoke($oauthSession, @($Url.AbsoluteUri))
 
+            # Poll the task via Start-Sleep instead of blocking on
+            # GetAwaiter().GetResult() so that Ctrl+C escapes promptly -- the
+            # vendor's native thread is otherwise uninterruptible and makes the
+            # user sit through OAuthSession's ~120s internal timeout if they
+            # close the browser tab. GetAwaiter().GetResult() after the loop
+            # preserves exception unwrapping (no AggregateException).
+            while (-not $signInTask.IsCompleted) {
+                Start-Sleep -Milliseconds 250
+            }
             $null = $signInTask.GetAwaiter().GetResult()
         }
     }
@@ -196,30 +237,9 @@ function Connect-SPOServiceCrossPlatform {
             [Reflection.BindingFlags]'Public,NonPublic,Instance').Invoke($oauthSession, @($Url.AbsoluteUri))
     }
 
-    $ctxCtor = $reflection.CmdLetContext.GetConstructor(
-        [Reflection.BindingFlags]'Public,NonPublic,Instance',
-        $null,
-        @([string], [System.Management.Automation.Host.PSHost], [string]),
-        $null)
-    $context = $ctxCtor.Invoke(@($Url.AbsoluteUri, $Host, $ClientTag))
-
-    $context.WebRequestExecutorFactory = [SPOService.CrossPlatform.HttpClientExecutorFactory]::new()
     $reflection.CmdLetContext.GetProperty(
         'OAuthSession',
         [Reflection.BindingFlags]'Public,NonPublic,Instance').SetValue($context, $oauthSession)
-
-    # Reject non-admin URLs (e.g. https://contoso.sharepoint.com) before we mutate
-    # SPOService.CurrentService. SPOServiceHelper.IsTenantAdminSite is the same
-    # check the native module uses.
-    $isAdminMethod = $reflection.SPOServiceHelper.GetMethod(
-        'IsTenantAdminSite',
-        [Reflection.BindingFlags]'Public,NonPublic,Static')
-    if (-not $isAdminMethod) {
-        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.SPOServiceHelper.IsTenantAdminSite is not present in the installed SPO module. Upgrade 'Microsoft.Online.SharePoint.PowerShell' or file an issue."
-    }
-    if (-not $isAdminMethod.Invoke($null, @($context))) {
-        throw "'$($Url.AbsoluteUri)' is not a SharePoint tenant admin URL. Use the admin site, e.g. https://<tenant>-admin.sharepoint.com."
-    }
 
     $svcCtor = $reflection.SPOService.GetConstructor(
         [Reflection.BindingFlags]'Public,NonPublic,Instance',

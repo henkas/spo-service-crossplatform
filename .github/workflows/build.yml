@@ -27,6 +27,13 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
+      # GitHub-hosted runners ship pwsh 7.4.x by default, but this module
+      # requires 7.6+ (the psd1's PowerShellVersion gate is enforced at
+      # Import-Module time). The composite action installs 7.6 and prepends
+      # it to PATH so subsequent `shell: pwsh` steps resolve to it.
+      - name: Install PowerShell 7.6
+        uses: ./.github/actions/install-pwsh76
+
       - name: Install Microsoft.Online.SharePoint.PowerShell
         shell: pwsh
         run: |

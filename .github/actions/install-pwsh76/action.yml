@@ -1,0 +1,59 @@
+name: Install PowerShell 7.6
+description: >-
+  Installs PowerShell 7.6 into $HOME/pwsh76 and prepends it to PATH so
+  subsequent `shell: pwsh` steps resolve to it. GitHub-hosted runners ship
+  pwsh 7.4.x by default, but SPOService.CrossPlatform's psd1 requires 7.6+
+  at Import-Module time, so the preinstalled pwsh is unusable for the module
+  smoke tests.
+
+  This composite action does not read any event-sourced input ($RUNNER_OS,
+  $HOME, and $GITHUB_PATH are all runner-provided), so there is no
+  script-injection surface.
+
+inputs:
+  version:
+    description: PowerShell version to install (defaults to 7.6.0).
+    required: false
+    default: "7.6.0"
+
+runs:
+  using: composite
+  steps:
+    - name: Download and extract pwsh ${{ inputs.version }}
+      shell: bash
+      env:
+        PWSH_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+        DEST="$HOME/pwsh76"
+        mkdir -p "$DEST"
+        case "$RUNNER_OS" in
+          Linux)
+            URL="https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-linux-x64.tar.gz"
+            ;;
+          macOS)
+            if [ "$(uname -m)" = "arm64" ]; then
+              URL="https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-osx-arm64.tar.gz"
+            else
+              URL="https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/powershell-${PWSH_VERSION}-osx-x64.tar.gz"
+            fi
+            ;;
+          *)
+            echo "Unsupported RUNNER_OS: $RUNNER_OS" >&2
+            exit 1
+            ;;
+        esac
+        curl -fsSL "$URL" | tar -xz -C "$DEST"
+        chmod +x "$DEST/pwsh"
+        echo "$DEST" >> "$GITHUB_PATH"
+
+    - name: Verify pwsh ${{ inputs.version }} on PATH
+      shell: pwsh
+      env:
+        PWSH_EXPECTED_VERSION: ${{ inputs.version }}
+      run: |
+        $v = $PSVersionTable.PSVersion
+        Write-Host "pwsh $v at $((Get-Command pwsh).Source)"
+        if ($v -lt [version]$env:PWSH_EXPECTED_VERSION) {
+            throw "pwsh $v is below required $env:PWSH_EXPECTED_VERSION"
+        }
