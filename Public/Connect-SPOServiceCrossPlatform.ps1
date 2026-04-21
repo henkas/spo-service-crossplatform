@@ -123,40 +123,13 @@ function Connect-SPOServiceCrossPlatform {
     $reflection = Get-SPOModuleReflection
     Assert-NativeShim
 
-    # Build the context and validate the URL *before* any auth call so that a
-    # typo'd or non-admin URL fails fast without launching a browser window or
-    # hitting a remote AAD endpoint. SPOServiceHelper.IsTenantAdminSite is the
-    # same check the native module uses.
-    $ctxCtor = $reflection.CmdLetContext.GetConstructor(
-        [Reflection.BindingFlags]'Public,NonPublic,Instance',
-        $null,
-        @([string], [System.Management.Automation.Host.PSHost], [string]),
-        $null)
-    $context = $ctxCtor.Invoke(@($Url.AbsoluteUri, $Host, $ClientTag))
-    $context.WebRequestExecutorFactory = [SPOService.CrossPlatform.HttpClientExecutorFactory]::new()
-
-    $isAdminMethod = $reflection.SPOServiceHelper.GetMethod(
-        'IsTenantAdminSite',
-        [Reflection.BindingFlags]'Public,NonPublic,Static')
-    if (-not $isAdminMethod) {
-        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.SPOServiceHelper.IsTenantAdminSite is not present in the installed SPO module. Upgrade 'Microsoft.Online.SharePoint.PowerShell' or file an issue."
+    if (-not (Test-SPOAdminUrlFormat -Url $Url)) {
+        throw "'$($Url.AbsoluteUri)' does not look like a SharePoint tenant admin URL. Use the admin site, e.g. https://<tenant>-admin.sharepoint.com."
     }
 
-    # IsTenantAdminSite hits the URL over the network, so a typo or a non-SPO
-    # host surfaces as a wrapped web exception rather than a clean bool. Either
-    # path -- exception or a false return -- means "do not proceed to auth."
-    try {
-        $isAdmin = $isAdminMethod.Invoke($null, @($context))
-    } catch {
-        $inner = if ($_.Exception.InnerException) { $_.Exception.InnerException.Message } else { $_.Exception.Message }
-        throw "Could not verify '$($Url.AbsoluteUri)' as a SharePoint tenant admin URL. Check for typos -- the admin site looks like https://<tenant>-admin.sharepoint.com. Underlying error: $inner"
-    }
-    if (-not $isAdmin) {
-        throw "'$($Url.AbsoluteUri)' is not a SharePoint tenant admin URL. Use the admin site, e.g. https://<tenant>-admin.sharepoint.com."
-    }
+    $context = New-SPOCmdletContext -Reflection $reflection -Url $Url -HostInstance $Host -ClientTag $ClientTag
 
     $authority = 'https://login.microsoftonline.com/organizations'
-    $oauthSession = $null
 
     switch ($PSCmdlet.ParameterSetName) {
         'CertificatePath' {
@@ -165,9 +138,23 @@ function Connect-SPOServiceCrossPlatform {
             } else {
                 [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath)
             }
+
+            $oauthSession = New-SPOCertificateOAuthSession `
+                -Reflection $reflection `
+                -Authority $authority `
+                -Certificate $cert `
+                -TenantId $TenantId `
+                -ClientId $ClientId `
+                -Url $Url
         }
         'CertificateObject' {
-            $cert = $Certificate
+            $oauthSession = New-SPOCertificateOAuthSession `
+                -Reflection $reflection `
+                -Authority $authority `
+                -Certificate $Certificate `
+                -TenantId $TenantId `
+                -ClientId $ClientId `
+                -Url $Url
         }
         'EnvFile' {
             $envMap = Get-LocalEnvMap -Path $EnvPath
@@ -187,59 +174,31 @@ function Connect-SPOServiceCrossPlatform {
                 throw "Certificate file not found: $pfxPath"
             }
             $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfxPath, (ConvertTo-SecureString $envMap.password -AsPlainText -Force))
+            $oauthSession = New-SPOCertificateOAuthSession `
+                -Reflection $reflection `
+                -Authority $authority `
+                -Certificate $cert `
+                -TenantId $TenantId `
+                -ClientId $ClientId `
+                -Url $Url
         }
         'SystemBrowser' {
-            $oauthSession = $reflection.OAuthSession.GetConstructor(
-                [Reflection.BindingFlags]'Public,NonPublic,Instance',
-                $null,
-                @([string], [bool]),
-                $null).Invoke(@($authority, $true))
-
-            $signInTask = $reflection.OAuthSession.GetMethod(
-                'SignIn',
-                [Reflection.BindingFlags]'Public,NonPublic,Instance',
-                $null,
-                @([string]),
-                $null).Invoke($oauthSession, @($Url.AbsoluteUri))
-
-            # Poll the task via Start-Sleep instead of blocking on
-            # GetAwaiter().GetResult() so that Ctrl+C escapes promptly -- the
-            # vendor's native thread is otherwise uninterruptible and makes the
-            # user sit through OAuthSession's ~120s internal timeout if they
-            # close the browser tab. GetAwaiter().GetResult() after the loop
-            # preserves exception unwrapping (no AggregateException).
-            while (-not $signInTask.IsCompleted) {
-                Start-Sleep -Milliseconds 250
-            }
-            $null = $signInTask.GetAwaiter().GetResult()
+            $oauthSession = New-SPOSystemBrowserOAuthSession `
+                -Reflection $reflection `
+                -Authority $authority `
+                -Url $Url
         }
     }
 
-    if (-not $oauthSession) {
-        $oauthSession = $reflection.OAuthSession.GetConstructor(
-            [Reflection.BindingFlags]'Public,NonPublic,Instance',
-            $null,
-            @(
-                [string],
-                [System.Security.Cryptography.X509Certificates.X509Certificate2],
-                [string],
-                [string]
-            ),
-            $null).Invoke(@(
-                $authority,
-                $cert,
-                $TenantId,
-                $ClientId
-            ))
-
-        $reflection.OAuthSession.GetMethod(
-            'SignInWithCert',
-            [Reflection.BindingFlags]'Public,NonPublic,Instance').Invoke($oauthSession, @($Url.AbsoluteUri))
-    }
-
-    $reflection.CmdLetContext.GetProperty(
+    $oauthSessionProp = $reflection.CmdLetContext.GetProperty(
         'OAuthSession',
-        [Reflection.BindingFlags]'Public,NonPublic,Instance').SetValue($context, $oauthSession)
+        [Reflection.BindingFlags]'Public,NonPublic,Instance')
+    if (-not $oauthSessionProp) {
+        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.CmdLetContext.OAuthSession is not present in the installed SPO module."
+    }
+    $oauthSessionProp.SetValue($context, $oauthSession)
+
+    Assert-SPOAdminSite -Reflection $reflection -Context $context -Url $Url
 
     $svcCtor = $reflection.SPOService.GetConstructor(
         [Reflection.BindingFlags]'Public,NonPublic,Instance',

@@ -26,6 +26,7 @@ runs:
       run: |
         set -euo pipefail
         DEST="$HOME/pwsh76"
+        rm -rf "$DEST"
         mkdir -p "$DEST"
         case "$RUNNER_OS" in
           Linux)
@@ -43,7 +44,35 @@ runs:
             exit 1
             ;;
         esac
-        curl -fsSL "$URL" | tar -xz -C "$DEST"
+
+        ARCHIVE_NAME="$(basename "$URL")"
+        ARCHIVE_PATH="$RUNNER_TEMP/$ARCHIVE_NAME"
+        CHECKSUMS_URL="https://github.com/PowerShell/PowerShell/releases/download/v${PWSH_VERSION}/hashes.sha256"
+        CHECKSUMS_PATH="$RUNNER_TEMP/powershell-${PWSH_VERSION}-hashes.sha256"
+
+        curl -fsSL -o "$ARCHIVE_PATH" "$URL"
+        curl -fsSL -o "$CHECKSUMS_PATH" "$CHECKSUMS_URL"
+
+        EXPECTED_HASH="$(grep " ${ARCHIVE_NAME}\$" "$CHECKSUMS_PATH" | awk '{print $1}')"
+        if [ -z "$EXPECTED_HASH" ]; then
+          echo "Failed to find SHA256 for $ARCHIVE_NAME in $CHECKSUMS_URL" >&2
+          exit 1
+        fi
+
+        if command -v sha256sum >/dev/null 2>&1; then
+          ACTUAL_HASH="$(sha256sum "$ARCHIVE_PATH" | awk '{print $1}')"
+        else
+          ACTUAL_HASH="$(shasum -a 256 "$ARCHIVE_PATH" | awk '{print $1}')"
+        fi
+
+        if [ "$ACTUAL_HASH" != "$EXPECTED_HASH" ]; then
+          echo "SHA256 mismatch for $ARCHIVE_NAME" >&2
+          echo "Expected: $EXPECTED_HASH" >&2
+          echo "Actual:   $ACTUAL_HASH" >&2
+          exit 1
+        fi
+
+        tar -xzf "$ARCHIVE_PATH" -C "$DEST"
         chmod +x "$DEST/pwsh"
         echo "$DEST" >> "$GITHUB_PATH"
 

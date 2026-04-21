@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk" InitialTargets="ResolveSpoRuntime">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
     <AssemblyName>SPOService.CrossPlatform</AssemblyName>
     <RootNamespace>SPOService.CrossPlatform</RootNamespace>
     <Nullable>disable</Nullable>
@@ -9,7 +9,7 @@
     <Authors>nstop</Authors>
     <Company>nstop Ltd.</Company>
     <Copyright>Copyright (c) 2026 nstop Ltd. Released under the MIT License.</Copyright>
-    <Description>HttpClient-based WebRequestExecutor that lets the Microsoft.Online.SharePoint.PowerShell CSOM pipeline work on PowerShell 7.6+ on macOS and Linux with native OAuthSession-based authentication.</Description>
+    <Description>HttpClient-based WebRequestExecutor that lets the Microsoft.Online.SharePoint.PowerShell CSOM pipeline work on PowerShell 7.6 / .NET 10 on macOS and Linux with native OAuthSession-based authentication.</Description>
     <Deterministic>true</Deterministic>
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>

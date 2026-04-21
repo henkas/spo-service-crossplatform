@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-A PowerShell 7 module (`SPOService.CrossPlatform`) plus a small C#/.NET 8 native shim that makes the official `Microsoft.Online.SharePoint.PowerShell` cmdlets work on macOS and Linux. It is a workaround for two defects in the vendor module — nothing in this repo re-implements SharePoint cmdlets. The public surface is just `Connect-SPOServiceCrossPlatform` and `Disconnect-SPOServiceCrossPlatform` (exported as `Connect-SPOService` / `Disconnect-SPOService` aliases that shadow the broken native cmdlets).
+A PowerShell 7 module (`SPOService.CrossPlatform`) plus a small C#/.NET 10 native shim that makes the official `Microsoft.Online.SharePoint.PowerShell` cmdlets work on macOS and Linux. It is a workaround for two defects in the vendor module — nothing in this repo re-implements SharePoint cmdlets. The public surface is just `Connect-SPOServiceCrossPlatform` and `Disconnect-SPOServiceCrossPlatform` (exported as `Connect-SPOService` / `Disconnect-SPOService` aliases that shadow the broken native cmdlets).
 
 ## Commands
 
@@ -33,7 +33,7 @@ pwsh -c '
 '
 ```
 
-Build matrix (`.github/workflows/build.yml`) runs on macos-latest and ubuntu-latest. Release (`release.yml`) fires on `v*` tags, stages `Public/`, `Private/`, psd1/psm1, and the built DLL into `lib/net8.0/`, rewrites `ModuleVersion` from the tag, and publishes to PSGallery + attaches the DLL to the GitHub release.
+Build matrix (`.github/workflows/build.yml`) runs on macos-latest and ubuntu-latest. Release (`release.yml`) fires on `v*` tags, stages `Public/`, `Private/`, psd1/psm1, and the built DLL into `bin/net10.0/`, rewrites `ModuleVersion` from the tag, and publishes to PSGallery + attaches the DLL to the GitHub release.
 
 ## Architecture
 
@@ -44,7 +44,7 @@ Three layers cooperate through reflection and runtime monkey-patching of types o
 The flow is load-sensitive and must stay in this order:
 
 1. `Get-SPOModuleReflection` imports `Microsoft.Online.SharePoint.PowerShell`, loads its MSAL DLL, and reflects out the internal `CmdLetContext` and `SPOService` types.
-2. `Assert-NativeShim` locates and `Add-Type`s the built `SPOService.CrossPlatform.dll`. It probes `lib/net8.0/` first (PSGallery install layout), then `src/.../bin/Release|Debug/net8.0/` (dev layout).
+2. `Assert-NativeShim` locates and `Add-Type`s the built `SPOService.CrossPlatform.dll`. It probes `bin/net10.0/` first (PSGallery install layout), then `src/.../bin/Release|Debug/net10.0/` (dev layout).
 3. MSAL `ConfidentialClientApplication` is built from cert + client/tenant IDs. A token-provider closure is captured in `$script:TokenProvider` so `Disconnect-*` can clear it.
 4. `CmdLetContext` is constructed **via reflection** on its non-public `(string, PSHost, string)` ctor — calling the normal factory goes through `SPOServiceHelper.InstantiateSPOService` which null-derefs `Microsoft.Win32.Registry.CurrentUser` on non-Windows.
 5. `context.WebRequestExecutorFactory` is set to the shim. An `ExecutingWebRequest` handler injects `Authorization: Bearer <token>` via the captured provider on every call — MSAL's own cache handles refresh.

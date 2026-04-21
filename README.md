@@ -9,7 +9,7 @@
 **macOS / Linux only.** Cross-platform replacement for `Connect-SPOService`
 that lets the official
 [`Microsoft.Online.SharePoint.PowerShell`](https://learn.microsoft.com/powershell/sharepoint/sharepoint-online/introduction-sharepoint-online-management-shell)
-cmdlets run unmodified on **PowerShell 7.6+ on macOS and Linux**.
+cmdlets run unmodified on **PowerShell 7.6 / .NET 10 on macOS and Linux**.
 Importing this module on Windows fails intentionally — use the stock SPO
 module there.
 
@@ -70,11 +70,11 @@ Full root-cause analysis and evidence: [`docs/investigation/`](docs/investigatio
 Install-Module SPOService.CrossPlatform
 ```
 
-The published package includes the prebuilt shim DLL under `lib/net8.0/`.
+The published package includes the prebuilt shim DLL under `bin/net10.0/`.
 
 ### From source
 
-Requires PowerShell 7.6+, .NET 8 SDK, and the SPO module installed (the
+Requires PowerShell 7.6 and the .NET 10 SDK, plus the SPO module installed (the
 shim references its `Microsoft.SharePoint.Client.Runtime.dll`).
 
 ```bash
@@ -92,7 +92,7 @@ pwsh -c 'Import-Module ./SPOService.CrossPlatform.psd1'
 ```
 
 The module auto-discovers the DLL from
-`src/SPOService.CrossPlatform/bin/Release/net8.0/` or `lib/net8.0/`.
+`src/SPOService.CrossPlatform/bin/Release/net10.0/` or `bin/net10.0/`.
 
 ## Authentication
 
@@ -173,7 +173,8 @@ Clears `SPOService.CurrentService`.
 
 ## Compatibility
 
-- PowerShell 7.6+
+- PowerShell 7.6
+- .NET 10 runtime (bundled with `pwsh` 7.6)
 - macOS (tested on Darwin 25, arm64) and Linux (expected to work on the
   same runtime — please open an issue with your distro if not)
 - `Microsoft.Online.SharePoint.PowerShell` 16.0.23408.12000 or newer

@@ -44,8 +44,8 @@ have documented trade-offs. Most "why not just …" answers live there.
 
 Prerequisites:
 
-- PowerShell 7.4+ on macOS or Linux.
-- .NET 8 SDK.
+- PowerShell 7.6 on macOS or Linux.
+- .NET 10 SDK.
 - `Microsoft.Online.SharePoint.PowerShell` installed (the csproj resolves
   `Microsoft.SharePoint.Client.Runtime.dll` from it).
 

@@ -22,17 +22,22 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Setup .NET 8
+      - name: Setup .NET 10
         uses: actions/setup-dotnet@c2fa09f4bde5ebb9d1777cf28262a3eb3db3ced7 # v5.2.0
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: '10.0.x'
 
-      # GitHub-hosted runners ship pwsh 7.4.x by default, but this module
-      # requires 7.6+ (the psd1's PowerShellVersion gate is enforced at
-      # Import-Module time). The composite action installs 7.6 and prepends
-      # it to PATH so subsequent `shell: pwsh` steps resolve to it.
+      # GitHub-hosted runners ship pwsh 7.4.x by default. This module targets
+      # pwsh 7.6 / .NET 10 only, so all PowerShell-side validation must run on
+      # the downloaded 7.6 host rather than the runner default.
       - name: Install PowerShell 7.6
         uses: ./.github/actions/install-pwsh76
+
+      - name: Show toolchain
+        shell: pwsh
+        run: |
+          Write-Host "pwsh $($PSVersionTable.PSVersion) on $([System.Runtime.InteropServices.RuntimeInformation]::FrameworkDescription)"
+          dotnet --version
 
       - name: Install Microsoft.Online.SharePoint.PowerShell
         shell: pwsh
@@ -45,6 +50,10 @@ jobs:
 
       - name: Build native shim
         run: dotnet build -c Release src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
+
+      - name: Run module contract tests
+        shell: pwsh
+        run: ./tests/ModuleContract.Tests.ps1
 
       - name: Import module (smoke test)
         shell: pwsh

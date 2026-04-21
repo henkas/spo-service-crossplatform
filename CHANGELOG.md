@@ -9,13 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Raised the supported PowerShell floor to `7.6+`.
+- Raised the supported runtime floor to `PowerShell 7.6 / .NET 10`.
 - Switched the connect path from a custom app-only MSAL token closure to
   reflected native `OAuthSession` wiring.
 - Added native Unix interactive auth via `-UseSystemBrowser`.
 - Kept certificate-based auth, now through native `OAuthSession` plus
   `SignInWithCert()`.
 - Kept the native shim as the transport repair layer.
+- Retargeted the native shim and packaged DLL layout from `net8.0` to
+  `net10.0`.
+- Moved the authenticated `IsTenantAdminSite` check to after `OAuthSession`
+  attachment; pre-auth validation is now syntactic only.
+- Wired `tests/ModuleContract.Tests.ps1` into build and release smoke jobs.
+- Hardened the `pwsh 7.6` installer action with SHA256 verification of the
+  downloaded archive.
 
 ## [0.1.0] - 2026-04-21
 
