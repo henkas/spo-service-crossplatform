@@ -1,0 +1,54 @@
+name: CodeQL Advanced Code Scanning
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly re-scan so new CodeQL queries catch issues on code that has not
+    # changed. Sunday 03:17 UTC, off-peak and outside PR review traffic.
+    - cron: '17 3 * * 0'
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+# Reads only the checkout. CodeQL does not support PowerShell on
+# GitHub-hosted runners (supported languages: C/C++, C#, Go, Java/Kotlin,
+# JS/TS, Python, Ruby, Swift), so only the native shim is analysed. The
+# PowerShell module surface is covered by PSScriptAnalyzer in lint.yml.
+jobs:
+  analyze:
+    name: analyze (csharp)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4.3.1
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Microsoft.Online.SharePoint.PowerShell
+        shell: pwsh
+        run: |
+          Install-Module Microsoft.Online.SharePoint.PowerShell `
+              -Scope CurrentUser -Force -AllowClobber
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        with:
+          languages: csharp
+          build-mode: manual
+          # security-and-quality adds quality rules on top of security-extended.
+          queries: security-and-quality
+
+      - name: Build native shim
+        run: dotnet build -c Release src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@ce64ddcb0d8d890d2df4a9d1c04ff297367dea2a # v3.35.2
+        with:
+          category: "/language:csharp"
