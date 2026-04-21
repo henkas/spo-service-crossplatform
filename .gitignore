@@ -1,0 +1,30 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+*.pfx
+*.key
+*.crt
+*.cer
+*.pem
+*.p12
+
+# .NET build output
+bin/
+obj/
+*.user
+
+# PowerShell module package / local shim DLL
+lib/
+
+# Editor / OS
+.vs/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+
+# Local scratch
+/tmp_*
+*.log
