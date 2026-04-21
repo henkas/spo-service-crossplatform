@@ -154,6 +154,15 @@ Connect-SPOServiceCrossPlatform `
 This is the only interactive mode supported on Unix in this release.
 Embedded-webview interactive auth is intentionally not supported.
 
+> **Azure Cloud Shell is not supported by this flow.** `-UseSystemBrowser`
+> spins up a local HTTP listener on `127.0.0.1` and opens a browser on the
+> host to receive the OAuth redirect. Cloud Shell's session has no local
+> browser and no way to reach the listener from outside the container, so
+> the sign-in hangs until it times out. A future release may add a
+> terminal-only flow (print the authorization URL, let the user open it
+> in their own browser, and paste the final redirect URL back into the
+> terminal) to cover this case; it is not in scope for this release.
+
 ## Disconnecting
 
 ```powershell
@@ -186,6 +195,8 @@ Not supported in this release:
 - embedded-webview interactive auth
 - username/password auth
 - managed identity
+- Azure Cloud Shell (no local browser / no reachable loopback listener;
+  see the note under [Interactive system browser](#4-interactive-system-browser))
 
 ## Contributing
 
