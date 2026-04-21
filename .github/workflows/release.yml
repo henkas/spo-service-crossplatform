@@ -273,13 +273,42 @@ jobs:
           $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
           Publish-Module -Path $stage -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
 
+      # Use the preinstalled gh CLI rather than a marketplace action because
+      # the enterprise Actions policy restricts third-party actions to those
+      # verified by GitHub, and softprops/action-gh-release is not on that
+      # allow-list. gh release create is first-party and covers the same
+      # surface (notes file / auto-generated notes, prerelease flag, asset
+      # upload with a hard fail if the asset is missing).
+      #
+      # No untrusted event strings are interpolated into run:; TAG_NAME is
+      # already validated as semver in the "Resolve version and prerelease
+      # from tag" step upstream, and NOTES_PATH / HAS_NOTES / IS_PRERELEASE
+      # are outputs produced by our own steps.
       - name: Create GitHub release
-        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
-        with:
-          files: |
-            src/SPOService.CrossPlatform/bin/Release/net8.0/SPOService.CrossPlatform.dll
-          body_path:              ${{ steps.notes.outputs.path }}
-          generate_release_notes: ${{ steps.notes.outputs.hasNotes == 'false' }}
-          prerelease:             ${{ steps.version.outputs.isPrerelease == 'true' }}
-          draft:                  false
-          fail_on_unmatched_files: true
+        shell: bash
+        env:
+          GH_TOKEN:      ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME:      ${{ github.ref_name }}
+          NOTES_PATH:    ${{ steps.notes.outputs.path }}
+          HAS_NOTES:     ${{ steps.notes.outputs.hasNotes }}
+          IS_PRERELEASE: ${{ steps.version.outputs.isPrerelease }}
+        run: |
+          set -euo pipefail
+          ASSET="src/SPOService.CrossPlatform/bin/Release/net8.0/SPOService.CrossPlatform.dll"
+          if [ ! -f "$ASSET" ]; then
+            echo "Expected release asset not found: $ASSET" >&2
+            exit 1
+          fi
+
+          args=("$TAG_NAME" --title "$TAG_NAME")
+          if [ "$HAS_NOTES" = "true" ]; then
+            args+=(--notes-file "$NOTES_PATH")
+          else
+            args+=(--generate-notes)
+          fi
+          if [ "$IS_PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          args+=("$ASSET")
+
+          gh release create "${args[@]}"
