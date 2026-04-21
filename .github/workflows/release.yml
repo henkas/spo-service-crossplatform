@@ -225,12 +225,14 @@ jobs:
               throw "Release notes contain the sequence ''@', which cannot be embedded safely in the staged module manifest."
           }
 
+          # Build the replacement as a regular expandable string rather than
+          # a here-string: PowerShell requires a here-string's closing '@/"@
+          # to sit at column 0 of its line, which conflicts with YAML block
+          # scalar indentation rules for `run: |`. Embedding the `'@ closer
+          # after a literal newline produces the same on-disk layout in the
+          # staged psd1 without breaking the workflow YAML.
           $releaseNotesLiteral = if ($releaseNotes) {
-@"
-ReleaseNotes = @'
-$releaseNotes
-'@
-"@
+              "ReleaseNotes = @'`n$releaseNotes`n'@"
           } else {
               "ReleaseNotes = ''"
           }
