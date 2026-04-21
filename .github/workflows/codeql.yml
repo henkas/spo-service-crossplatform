@@ -31,7 +31,7 @@ jobs:
           - language: powershell
             build-mode: none
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup .NET 8
         if: matrix.language == 'csharp'
