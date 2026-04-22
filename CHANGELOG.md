@@ -7,22 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-22
+
+Drops the hand-rolled MSAL token closure in favour of the vendor module's
+own `OAuthSession`, and adds native interactive auth on macOS/Linux. The
+module now only replaces the broken CSOM transport — authentication goes
+through the official code path, which is what made interactive auth
+reachable in the first place. Runtime floor raised to PowerShell 7.6 /
+.NET 10.
+
+### Added
+
+- `-UseSystemBrowser` parameter set on `Connect-SPOServiceCrossPlatform`
+  for interactive auth via the OS default browser. Calls the reflected
+  `OAuthSession(authority, useSystemBrowser:$true)` ctor + `SignIn` and
+  polls the returned `Task` so Ctrl+C escapes promptly. Embedded-webview
+  interactive auth is intentionally still not supported.
+- `Private/Assert-SupportedRuntime.ps1` — runtime floor guard called from
+  both `psm1` import and the top of `Connect-*`, belt-and-braces with the
+  manifest's `PowerShellVersion = '7.6'` so non-7.6 hosts fail fast with
+  an actionable message instead of a late reflection error.
+- `tests/ModuleContract.Tests.ps1` covering `Assert-SupportedRuntime`
+  behaviour and the `Connect-*` parameter-set / shape contract (including
+  the new `SystemBrowser` set), wired into build and release smoke jobs.
+- `docs/investigation/04-native-session-and-interactive-auth.md` plus a
+  smoke artifact, preserving the reasoning for the auth rework alongside
+  the existing investigation trail.
+
 ### Changed
 
 - Raised the supported runtime floor to `PowerShell 7.6 / .NET 10`.
-- Switched the connect path from a custom app-only MSAL token closure to
-  reflected native `OAuthSession` wiring.
-- Added native Unix interactive auth via `-UseSystemBrowser`.
-- Kept certificate-based auth, now through native `OAuthSession` plus
-  `SignInWithCert()`.
-- Kept the native shim as the transport repair layer.
+  Previous `7.4 / net8.0` target is dropped; 0.2.0 will not import on
+  7.4/7.5 hosts.
 - Retargeted the native shim and packaged DLL layout from `net8.0` to
-  `net10.0`.
-- Moved the authenticated `IsTenantAdminSite` check to after `OAuthSession`
-  attachment; pre-auth validation is now syntactic only.
-- Wired `tests/ModuleContract.Tests.ps1` into build and release smoke jobs.
-- Hardened the `pwsh 7.6` installer action with SHA256 verification of the
-  downloaded archive.
+  `net10.0` to match the new floor. PSGallery layout now ships the shim
+  under `bin/net10.0/`.
+- Certificate-based auth now runs through the reflected native
+  `OAuthSession` ctor + `SignInWithCert()` and is attached to
+  `CmdLetContext.OAuthSession`. Token refresh/caching is handled by the
+  native session instead of an MSAL cache we owned.
+- Moved the authenticated `SPOServiceHelper.IsTenantAdminSite` check to
+  **after** `OAuthSession` attachment. Pre-auth validation is now purely
+  syntactic (`Test-SPOAdminUrlFormat`); the tenant-admin CSOM check still
+  runs before `SPOService.CurrentService` is mutated, so non-admin URLs
+  still fail without disturbing any prior connection.
+- Hardened the `pwsh 7.6` installer action with SHA256 verification of
+  the downloaded archive so CI cannot be silently poisoned by a bad
+  mirror.
+- Kept the native `HttpClientExecutor` shim as the sole transport repair
+  layer — same GET→POST upgrade, `NonClosingStream` wrapping, and static
+  `HttpClient` reuse as 0.1.0.
+
+### Removed
+
+- Custom MSAL `ConfidentialClientApplication` setup and the
+  `ExecutingWebRequest` bearer-injection closure that 0.1.0 used to
+  stitch tokens onto each CSOM call. The native `OAuthSession` does both
+  jobs, and keeping our own token plumbing duplicated logic the vendor
+  module already ships.
+- `$script:TokenProvider` cache and the corresponding teardown in
+  `Disconnect-SPOServiceCrossPlatform`. Disconnect now only clears
+  `SPOService.CurrentService`; the native session owns its own lifetime.
 
 ## [0.1.0] - 2026-04-21
 
@@ -68,5 +113,6 @@ app-only auth only.
   also prevents the process-wide client from accumulating cross-session
   cookie state across reconnects.
 
-[Unreleased]: https://github.com/nstophq/spo-service-crossplatform/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nstophq/spo-service-crossplatform/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/nstophq/spo-service-crossplatform/releases/tag/v0.2.0
 [0.1.0]: https://github.com/nstophq/spo-service-crossplatform/releases/tag/v0.1.0
