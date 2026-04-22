@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-04-22
+
 ### Changed
 
 - Raised the supported runtime floor to `PowerShell 7.6 / .NET 10`.
@@ -68,5 +70,6 @@ app-only auth only.
   also prevents the process-wide client from accumulating cross-session
   cookie state across reconnects.
 
-[Unreleased]: https://github.com/nstophq/spo-service-crossplatform/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/nstophq/spo-service-crossplatform/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/nstophq/spo-service-crossplatform/releases/tag/v0.2.0
 [0.1.0]: https://github.com/nstophq/spo-service-crossplatform/releases/tag/v0.1.0
