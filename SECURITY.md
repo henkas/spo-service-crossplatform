@@ -17,15 +17,10 @@ patched — please upgrade before reporting an issue.
 expose the vulnerability to every user of the module before a fix is
 available.
 
-Use one of the following channels, in order of preference:
-
-1. **GitHub private vulnerability reporting** (preferred):
-   [Report a vulnerability](https://github.com/nstophq/spo-service-crossplatform/security/advisories/new).
-   This creates a private advisory that only the maintainers can see, and
-   gives you a structured place to share a reproducer.
-
-2. **Email**: `security@nstop.app`. Include "SPOService.CrossPlatform" in
-   the subject line. PGP is available on request.
+Use **GitHub private vulnerability reporting**:
+[Report a vulnerability](https://github.com/henkas/spo-service-crossplatform/security/advisories/new).
+This creates a private advisory that only the maintainer can see and gives
+you a structured place to share a reproducer.
 
 Please include, if you can:
 

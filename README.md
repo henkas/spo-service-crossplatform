@@ -1,10 +1,10 @@
 # SPOService.CrossPlatform
 
 [![PSGallery Version](https://img.shields.io/powershellgallery/v/SPOService.CrossPlatform?style=flat&logo=data:image/svg%2Bxml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgZGF0YS1uYW1lPSJMYXllciAxIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0MCIgaGVpZ2h0PSIzOCIgdmlld0JveD0iMCAwIDQxIDM4Ij4NCiAgPHRpdGxlPkFydGJvYXJkIDE8L3RpdGxlPg0KICA8ZyBpZD0iZzM3NzIiPg0KICAgIDxnIGlkPSJnMzc3MCI+DQogICAgICA8cGF0aCBpZD0icGF0aDM3NjgiIGQ9Ik0zOS41LDMuODVIOS4yNDlhMi4yMzcsMi4yMzcsMCwwLDAtMi4xLDEuN2wtNi4xLDI2LjZhMS4zLDEuMywwLDAsMCwxLjMsMS43aDMwLjNhMi4yMzcsMi4yMzcsMCwwLDAsMi4xLTEuN2w2LjEtMjYuNTVBMS4zNTUsMS4zNTUsMCwwLDAsMzkuNSwzLjg1WiIgZmlsbD0iIzAwNzJjNiIvPg0KICAgIDwvZz4NCiAgPC9nPg0KICA8cGF0aCBpZD0icGF0aDM3NzgiIGQ9Ik0yNC40LDE5LjNjLS4xLjMtLjQuNS0uOS45TDkuOSwzMGExLjg2OCwxLjg2OCwwLDAsMS0yLjQtLjQsMS43MywxLjczLDAsMCwxLC4zLTIuNGwxMi4zLTguOXYtLjJMMTIuNCw5LjlhMS43MiwxLjcyLDAsMCwxLC4xLTIuNCwxLjYzMywxLjYzMywwLDAsMSwyLjQsMGw5LjMsOS45QTEuMywxLjMsMCwwLDEsMjQuNCwxOS4zWiIgZmlsbD0iI2ZmZiIvPg0KICA8cGF0aCBpZD0icGF0aDM3ODAiIGQ9Ik0xOS44LDI2LjdoNy40YTEuNSwxLjUsMCwxLDEsMCwzSDE5LjhhMS41LDEuNSwwLDEsMSwwLTNaIiBmaWxsPSIjZmZmIi8+DQo8L3N2Zz4NCg==)](https://www.powershellgallery.com/packages/SPOService.CrossPlatform)
-[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/nstophq/spo-service-crossplatform/build.yml?branch=main&style=flat&logo=github&logoColor=%23fff)](https://github.com/nstophq/spo-service-crossplatform/actions/workflows/build.yml)
-[![GitHub Issues](https://img.shields.io/github/issues/nstophq/spo-service-crossplatform?style=flat&logo=github&logoColor=%23fff)](https://github.com/nstophq/spo-service-crossplatform/issues)
-[![GitHub License](https://img.shields.io/github/license/nstophq/spo-service-crossplatform?style=flat&logo=github&logoColor=%23fff)](LICENSE)
-[![GitHub Release](https://img.shields.io/github/v/release/nstophq/spo-service-crossplatform?style=flat&logo=github&logoColor=%23fff)](https://github.com/nstophq/spo-service-crossplatform/releases/latest)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/henkas/spo-service-crossplatform/build.yml?branch=main&style=flat&logo=github&logoColor=%23fff)](https://github.com/henkas/spo-service-crossplatform/actions/workflows/build.yml)
+[![GitHub Issues](https://img.shields.io/github/issues/henkas/spo-service-crossplatform?style=flat&logo=github&logoColor=%23fff)](https://github.com/henkas/spo-service-crossplatform/issues)
+[![GitHub License](https://img.shields.io/github/license/henkas/spo-service-crossplatform?style=flat&logo=github&logoColor=%23fff)](LICENSE)
+[![GitHub Release](https://img.shields.io/github/v/release/henkas/spo-service-crossplatform?style=flat&logo=github&logoColor=%23fff)](https://github.com/henkas/spo-service-crossplatform/releases/latest)
 
 **macOS / Linux only.** Cross-platform replacement for `Connect-SPOService`
 that lets the official
@@ -78,7 +78,7 @@ Requires PowerShell 7.6 and the .NET 10 SDK, plus the SPO module installed (the
 shim references its `Microsoft.SharePoint.Client.Runtime.dll`).
 
 ```bash
-git clone https://github.com/nstophq/spo-service-crossplatform.git
+git clone https://github.com/henkas/spo-service-crossplatform.git
 cd spo-service-crossplatform
 
 # Install the official SPO module once if you don't have it
@@ -242,15 +242,3 @@ file for the full third-party attribution.
 - [`SharePoint/sp-dev-docs#9434`](https://github.com/SharePoint/sp-dev-docs/issues/9434)
   — open bug report covering `Connect-SPOService` failures on
   macOS / Linux.
-
----
-
-<p align="center">
-  <sub>An open source module published by</sub>
-  <a href="https://nstop.app">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://nstop.app/img/wordmark-light.png">
-      <img src="https://nstop.app/img/wordmark-dark.png" alt="nstop" height="18">
-    </picture>
-  </a>
-</p>
