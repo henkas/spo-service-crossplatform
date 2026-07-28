@@ -292,7 +292,7 @@ itself:
 
 ```powershell
 Import-Module ./SPOService.CrossPlatform.psd1 -Force -ErrorAction Stop
-Connect-SPOServiceCrossPlatform -Url https://nstopapp-admin.sharepoint.com -UseSystemBrowser
+Connect-SPOServiceCrossPlatform -Url https://contoso-admin.sharepoint.com -UseSystemBrowser
 Get-SPOTenant | Select-Object -First 1 StorageQuota,SharingCapability | Format-List
 ```
 

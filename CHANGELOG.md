@@ -113,6 +113,6 @@ app-only auth only.
   also prevents the process-wide client from accumulating cross-session
   cookie state across reconnects.
 
-[Unreleased]: https://github.com/nstophq/spo-service-crossplatform/compare/v0.2.0...HEAD
-[0.2.0]: https://github.com/nstophq/spo-service-crossplatform/releases/tag/v0.2.0
-[0.1.0]: https://github.com/nstophq/spo-service-crossplatform/releases/tag/v0.1.0
+[Unreleased]: https://github.com/henkas/spo-service-crossplatform/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/henkas/spo-service-crossplatform/releases/tag/v0.2.0
+[0.1.0]: https://github.com/henkas/spo-service-crossplatform/releases/tag/v0.1.0
