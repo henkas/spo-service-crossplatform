@@ -22,7 +22,7 @@ Load the module locally:
 pwsh -c 'Import-Module ./SPOService.CrossPlatform.psd1 -Force'
 ```
 
-Smoke-test (same checks CI runs — no test framework in this repo):
+Import/alias smoke-test (CI also runs standalone contract scripts in `tests/`):
 
 ```bash
 pwsh -c '
@@ -33,7 +33,7 @@ pwsh -c '
 '
 ```
 
-Build matrix (`.github/workflows/build.yml`) runs on macos-latest and ubuntu-latest. Release (`release.yml`) fires on `v*` tags, stages `Public/`, `Private/`, psd1/psm1, and the built DLL into `bin/net10.0/`, rewrites `ModuleVersion` from the tag, and publishes to PSGallery + attaches the DLL to the GitHub release.
+Build matrix (`.github/workflows/build.yml`) runs on macos-latest and ubuntu-latest. Release (`release.yml`) fires on `v*` tags, validates the tag against committed version/prerelease metadata before approval, stages the manifest unchanged with `Public/`, `Private/`, psd1/psm1, and the built DLL under `bin/net10.0/`, and publishes to PSGallery + attaches the DLL to the GitHub release. Changelog notes are passed directly to `Publish-Module -ReleaseNotes`.
 
 ## Architecture
 
@@ -68,4 +68,4 @@ Subclasses `Microsoft.SharePoint.Client.WebRequestExecutor` and replaces the sto
 - Anything that pokes at vendor types (`CmdLetContext`, `SPOService`, `WebRequestExecutor`) goes through reflection because these are internal/non-public. Don't try to reference them at compile time from the PowerShell side.
 - The C# project intentionally has `<Private>false</Private>` on the `Microsoft.SharePoint.Client.Runtime` reference — we do **not** redistribute that DLL. `dotnet build` output is a single `SPOService.CrossPlatform.dll`.
 - `docs/investigation/` is preserved deliberately (IL inspector traces, reflection bypass notes, PnP bridge attempt, `ProcessQuery` direct helper). Consult it before proposing architectural changes — most "why not just …" alternatives were already tried.
-- No test framework is wired up. CI validates by importing the module and asserting exports/aliases resolve.
+- CI runs standalone PowerShell contract scripts under `tests/` plus import/alias checks. Pester adoption is planned separately.

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Release staging now copies the manifest unchanged, preserving the SPO
+  dependency floor at `16.0.23408.12000`. The `0.2.0`
+  Gallery package incorrectly declared `0.2.0` as its dependency minimum
+  because the release workflow replaced both assignments.
+- Tags must match committed version and prerelease metadata before builds
+  or publishing approval. Changelog notes are passed directly to publishing,
+  avoiding manifest quoting problems. Failed staging cleans up its output.
+
 ## [0.2.0] - 2026-04-22
 
 Drops the hand-rolled MSAL token closure in favour of the vendor module's
