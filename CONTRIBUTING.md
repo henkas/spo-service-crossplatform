@@ -172,6 +172,22 @@ it into place only on success, allowing the same output path to be retried.
 Import is non-authenticating and does not load the shim until connection;
 these checks do not replace native build or manual authentication testing.
 
+## Source privacy checks
+
+Run `./tests/SourceHygiene.Tests.ps1` to check tracked source files and
+non-ignored additions, including hidden files and `docs/investigation/`.
+The lint workflow runs it on PRs only; staging and binary artifacts do not
+use this check. There is no organization-name blocklist.
+
+Use `contoso` or `contoso-*` hosts (including `contoso-my.sharepoint.com`)
+and all-zero or symbolic IDs in examples. GUID assignments in the module
+manifest are exempt as module identity metadata; this is not a pinned-GUID
+check. The scanner honors Unicode BOMs and reports locations/categories
+without echoing values. Its rules cover recognizable tenant hosts, UUIDs,
+certificate fields, private keys, JWT-shaped tokens, and captured quotas.
+They do not prove arbitrary secrets are absent. Review documentation and
+examples manually too; ignored local files and Git history are not scanned.
+
 ## License
 
 By contributing, you agree that your contributions are licensed under the

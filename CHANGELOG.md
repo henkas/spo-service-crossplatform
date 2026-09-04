@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tags must match committed version and prerelease metadata before builds
   or publishing approval. Changelog notes are passed directly to publishing,
   avoiding manifest quoting problems. Failed staging cleans up its output.
+- Removed identifying certificate fields and captured tenant properties from
+  investigation notes; added source-only privacy checks for pull requests.
 
 ## [0.2.0] - 2026-04-22
 

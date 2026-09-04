@@ -30,7 +30,7 @@ function Connect-SPOServiceCrossPlatform {
     the HttpClient-based executor shim.
 
 .PARAMETER Url
-    The SharePoint admin URL, e.g. https://tenant-admin.sharepoint.com.
+    The SharePoint admin URL, e.g. https://contoso-admin.sharepoint.com.
 
 .PARAMETER ClientId
     App registration (service principal) client ID.
