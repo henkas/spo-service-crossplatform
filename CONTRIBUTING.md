@@ -151,6 +151,7 @@ Run the standalone, non-tenant checks after installing the vendor dependency:
 ./tests/ModuleContract.Tests.ps1
 ./tests/AdminUrl.Tests.ps1
 ./tests/ConnectBinding.Tests.ps1
+./tests/VendorContract.Tests.ps1
 ./tests/StageModule.Tests.ps1
 ```
 

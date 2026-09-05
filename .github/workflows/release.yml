@@ -74,6 +74,10 @@ jobs:
         shell: pwsh
         run: ./tests/ConnectBinding.Tests.ps1
 
+      - name: Run vendor contract tests
+        shell: pwsh
+        run: ./tests/VendorContract.Tests.ps1
+
       - name: Run staging contract tests
         shell: pwsh
         run: ./tests/StageModule.Tests.ps1

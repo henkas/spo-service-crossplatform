@@ -143,8 +143,11 @@ function Connect-SPOServiceCrossPlatform {
         Assert-SPOInteractiveSession
     }
 
+    # Deterministic vendor selection, then prove every reflected member exists
+    # before any sign-in or global state change.
     $reflection = Get-SPOModuleReflection
     Assert-NativeShim
+    Assert-SPOVendorContract -Reflection $reflection
 
     $context = New-SPOCmdletContext -Reflection $reflection -Url $Url -HostInstance $Host -ClientTag $ClientTag
 
@@ -230,8 +233,14 @@ function Connect-SPOServiceCrossPlatform {
         $null,
         @($reflection.CmdLetContext),
         $null)
+    if (-not $svcCtor) {
+        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.SPOService(CmdLetContext) is not present in the installed SPO module."
+    }
     $service = $svcCtor.Invoke(@($context))
 
     $currentServiceProp = $reflection.SPOService.GetProperty('CurrentService', [Reflection.BindingFlags]'Public,NonPublic,Static')
+    if (-not $currentServiceProp -or -not $currentServiceProp.GetSetMethod($true)) {
+        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.SPOService.CurrentService is not settable in the installed SPO module."
+    }
     $currentServiceProp.SetValue($null, $service)
 }

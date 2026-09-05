@@ -193,7 +193,12 @@ Clears `SPOService.CurrentService`.
 - .NET 10 runtime (bundled with `pwsh` 7.6)
 - macOS (tested on Darwin 25, arm64) and Linux (expected to work on the
   same runtime — please open an issue with your distro if not)
-- `Microsoft.Online.SharePoint.PowerShell` 16.0.23408.12000 or newer
+- `Microsoft.Online.SharePoint.PowerShell` 16.0.23408.12000 or newer. The
+  connect cmdlet reuses the version already loaded in your session if it meets
+  this floor, otherwise imports the highest installed version that does, and
+  probes the vendor internals it relies on before signing in. If a vendor
+  update changes those internals you get one error naming the version and the
+  missing members, before anything is authenticated or changed.
 
 Windows is explicitly unsupported: importing this module on Windows
 throws a terminating error. Windows users should keep using the stock

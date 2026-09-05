@@ -36,6 +36,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Vendor module selection is deterministic. `Connect-SPOServiceCrossPlatform`
+  reuses an already-loaded `Microsoft.Online.SharePoint.PowerShell` if it
+  meets the manifest minimum (`16.0.23408.12000`), otherwise imports the
+  highest installed version that does, and refuses clearly when the only
+  loaded or installed versions are older (a loaded vendor assembly cannot be
+  swapped; the fix is a new session or `Update-Module`). Previously the first
+  module returned by `Get-Module` was used without ordering or a version check.
+- Every non-public vendor member the connect path relies on (constructors,
+  sign-in methods, settable properties) is now probed before authentication
+  or any global state change. A vendor build that changed its internals fails
+  with one error listing the missing members, vendor version and path, and
+  PowerShell/runtime/OS/architecture, with a link to the issue tracker and no
+  tenant data. `Disconnect-SPOServiceCrossPlatform` no longer depends on
+  module list order and stays idempotent.
 - Release staging now copies the manifest unchanged, preserving the SPO
   dependency floor at `16.0.23408.12000`. The `0.2.0`
   Gallery package incorrectly declared `0.2.0` as its dependency minimum
