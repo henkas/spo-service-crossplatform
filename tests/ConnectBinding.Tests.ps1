@@ -51,6 +51,8 @@ $cases = [ordered]@{
     'url + UseSystemBrowser + ClientId'     = { & $sets -Url $url -UseSystemBrowser -ClientId $id }
     'url + UseEnvFile + UseSystemBrowser'   = { & $sets -Url $url -UseEnvFile -UseSystemBrowser }
     'no url'                                = { & $sets -UseSystemBrowser }
+    'url + 13-char ClientTag'               = { & $sets -Url $url -ClientTag 'abcdefghijklm' }
+    'url + 14-char ClientTag'               = { & $sets -Url $url -ClientTag 'abcdefghijklmn' }
 }
 foreach ($case in $cases.GetEnumerator()) {
     try { $result = & $case.Value; $error_ = '' } catch { $result = ''; $error_ = $_.Exception.Message }
@@ -85,6 +87,7 @@ $expectedSet = [ordered]@{
     'url + cert object'          = 'CertificateObject'
     'url + UseEnvFile'           = 'EnvFile'
     'url + UseEnvFile + EnvPath' = 'EnvFile'
+    'url + 13-char ClientTag'    = 'SystemBrowser'
 }
 $expectedBindingError = [ordered]@{
     'url + ClientId + TenantId (no cert)' = 'cannot be resolved|missing mandatory'
@@ -93,6 +96,7 @@ $expectedBindingError = [ordered]@{
     'url + UseSystemBrowser + ClientId'   = 'cannot be resolved'
     'url + UseEnvFile + UseSystemBrowser' = 'cannot be resolved'
     'no url'                              = 'missing mandatory'
+    'url + 14-char ClientTag'             = 'Cannot validate argument.*13'
 }
 foreach ($case in $expectedSet.GetEnumerator()) {
     $r = $results[$case.Key]

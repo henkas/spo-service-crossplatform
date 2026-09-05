@@ -170,6 +170,12 @@ there is none: an SSH session without a forwarded display, Linux with no
 `DISPLAY` or `WAYLAND_DISPLAY`, or Azure Cloud Shell. The error points at
 the certificate parameters to use instead.
 
+Ctrl+C during sign-in returns you to the prompt immediately and no connection
+is established. The vendor's sign-in task and its loopback listener keep
+running in the background until the vendor's own timeout, because its API
+exposes no cancellation token; a stray browser tab may still show the sign-in
+page. This is a vendor limitation, not something the module can cancel.
+
 > **Azure Cloud Shell is not supported by this flow.** `-UseSystemBrowser`
 > spins up a local HTTP listener on `127.0.0.1` and opens a browser on the
 > host to receive the OAuth redirect. Cloud Shell's session has no local

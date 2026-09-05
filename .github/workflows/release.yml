@@ -78,6 +78,14 @@ jobs:
         shell: pwsh
         run: ./tests/VendorContract.Tests.ps1
 
+      - name: Run connect failure-path tests
+        shell: pwsh
+        run: ./tests/ConnectFailure.Tests.ps1
+
+      - name: Run env-file contract tests
+        shell: pwsh
+        run: ./tests/EnvFile.Tests.ps1
+
       - name: Run staging contract tests
         shell: pwsh
         run: ./tests/StageModule.Tests.ps1

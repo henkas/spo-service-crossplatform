@@ -25,7 +25,17 @@ function New-SPOCmdletContext {
         throw "Internal error: Microsoft.Online.SharePoint.PowerShell.CmdLetContext(string, PSHost, string) is not present in the installed SPO module."
     }
 
-    $context = $ctxCtor.Invoke(@($Url.AbsoluteUri, $HostInstance, $ClientTag))
+    try {
+        $context = $ctxCtor.Invoke(@($Url.AbsoluteUri, $HostInstance, $ClientTag))
+    } catch [System.Reflection.TargetInvocationException] {
+        $inner = $_.Exception.InnerException
+        if ($ClientTag -and $inner -is [System.ArgumentOutOfRangeException]) {
+            # Connect already caps ClientTag at 13 characters; this covers a
+            # vendor build whose own prefix leaves even less room.
+            throw "Microsoft.Online.SharePoint.PowerShell $($Reflection.Version) rejected ClientTag '$ClientTag' ($($ClientTag.Length) characters): the vendor prepends its own tag and CSOM caps the combined value at 32 characters. Use a shorter tag or omit it. Underlying error: $($inner.Message)"
+        }
+        throw
+    }
     $context.WebRequestExecutorFactory = [SPOService.CrossPlatform.HttpClientExecutorFactory]::new()
     return $context
 }

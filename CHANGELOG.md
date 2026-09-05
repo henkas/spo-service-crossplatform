@@ -50,6 +50,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   PowerShell/runtime/OS/architecture, with a link to the issue tracker and no
   tenant data. `Disconnect-SPOServiceCrossPlatform` no longer depends on
   module list order and stays idempotent.
+- `-ClientTag` is capped at 13 characters at parameter binding. The vendor
+  prepends its own `TAPS (<version>)` tag and CSOM limits the combined value
+  to 32 characters, so longer tags failed inside the vendor constructor with
+  an opaque out-of-range error on every tested build.
+- A failed connection leaves any existing connection untouched and disposes
+  the partially built vendor context. `SPOService.CurrentService` is only
+  assigned after the admin-site check succeeds; the original error surfaces
+  unchanged.
+- Documented that Ctrl+C during interactive sign-in returns control at once
+  but cannot stop the vendor's sign-in task or loopback listener, which run
+  until the vendor's own timeout; the vendor API exposes no cancellation token.
+- `.env` handling is pinned by tests as opt-in and literal: only the explicit
+  `-EnvPath` (default `./.env`) is read, with no variable, tilde or shell
+  expansion of values.
 - Release staging now copies the manifest unchanged, preserving the SPO
   dependency floor at `16.0.23408.12000`. The `0.2.0`
   Gallery package incorrectly declared `0.2.0` as its dependency minimum
