@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-05
+
+Stabilisation release ahead of 1.0. Fixes the `0.2.0` package's corrupted
+dependency floor, hardens the pre-authentication boundary (admin URL shape,
+deterministic vendor selection, reflected-API probe), and makes the URL-only
+quick start actually start interactive sign-in. Published first as `0.3.0-rc1`
+for manual verification on macOS and Linux.
+
 ### Changed
 
 - **Breaking:** `Connect-SPOServiceCrossPlatform -Url <admin-url>` with no
@@ -180,6 +188,7 @@ app-only auth only.
   also prevents the process-wide client from accumulating cross-session
   cookie state across reconnects.
 
-[Unreleased]: https://github.com/henkas/spo-service-crossplatform/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/henkas/spo-service-crossplatform/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/henkas/spo-service-crossplatform/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/henkas/spo-service-crossplatform/releases/tag/v0.2.0
 [0.1.0]: https://github.com/henkas/spo-service-crossplatform/releases/tag/v0.1.0

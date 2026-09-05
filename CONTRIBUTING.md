@@ -132,13 +132,13 @@ Releases are tag-driven. Pushing a tag matching `v*` (e.g. `v0.2.0`) on
    publishes to PSGallery, and attaches the DLL to the GitHub release.
 
 Tags must be `vMAJOR.MINOR.PATCH[-PRERELEASE]`, with no leading zeros and
-an alphanumeric prerelease suffix (for example, `v0.2.1-rc1`). Suffixes
+an alphanumeric prerelease suffix (for example, `v0.3.0-rc1`). Suffixes
 are never silently normalized.
 
 Before tagging, commit the numeric version in the source manifest. For an
 RC, commit `Prerelease = 'rc1'`; clear it to `''` for stable. Promote
-completed `Unreleased` notes to a dated `## [0.2.1-rc1]` or
-`## [0.2.1]` section. The resolver prefers RC-specific notes and falls
+completed `Unreleased` notes to a dated `## [0.3.0-rc1]` or
+`## [0.3.0]` section. The resolver prefers RC-specific notes and falls
 back to the numeric section. Missing/blank notes remain empty; Gallery
 uses the manifest's notes link and GitHub uses generated notes.
 
