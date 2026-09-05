@@ -53,7 +53,11 @@ function Connect-SPOServiceCrossPlatform {
 
 .PARAMETER UseSystemBrowser
     Starts native OAuthSession interactive auth using the system browser.
-    This is the only interactive mode supported on Unix.
+    This is the default when only -Url is given, so the switch is optional;
+    it remains for explicit scripts. This is the only interactive mode
+    supported on Unix. Interactive sign-in is refused up front in sessions
+    that cannot open a browser (SSH without a forwarded display, Linux with
+    no DISPLAY/WAYLAND_DISPLAY, Azure Cloud Shell); use certificate auth there.
 
 .PARAMETER UseEnvFile
     Opt in to reading ClientId, TenantId, password (PFX password), and
@@ -75,11 +79,12 @@ function Connect-SPOServiceCrossPlatform {
     Explicit certificate-based auth.
 
 .EXAMPLE
-    Connect-SPOService -Url https://contoso-admin.sharepoint.com -UseSystemBrowser
+    Connect-SPOService -Url https://contoso-admin.sharepoint.com
 
-    Launches the native system-browser flow on PowerShell 7.6+.
+    URL-only call: launches the native system-browser flow (the default).
+    Equivalent to passing -UseSystemBrowser explicitly.
 #>
-    [CmdletBinding(DefaultParameterSetName = 'CertificatePath')]
+    [CmdletBinding(DefaultParameterSetName = 'SystemBrowser')]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
         'PSAvoidUsingConvertToSecureStringWithPlainText', '',
         Justification = 'The .env file is already plaintext on disk; ConvertTo-SecureString here is the mandated bridge to X509Certificate2, not a new plaintext surface.')]
@@ -116,7 +121,9 @@ function Connect-SPOServiceCrossPlatform {
         [Parameter(ParameterSetName = 'EnvFile')]
         [string]$EnvPath = (Join-Path (Get-Location) '.env'),
 
-        [Parameter(Mandatory = $true, ParameterSetName = 'SystemBrowser')]
+        # Optional within its set: a URL-only call binds here, so interactive
+        # system-browser sign-in is the default, matching the native cmdlet.
+        [Parameter(ParameterSetName = 'SystemBrowser')]
         [switch]$UseSystemBrowser,
 
         [string]$ClientTag = ''
@@ -128,6 +135,12 @@ function Connect-SPOServiceCrossPlatform {
     # state, so a malformed or spoofed host never reaches authentication.
     if (-not (Test-SPOAdminUrlFormat -Url $Url)) {
         throw "'$($Url.OriginalString)' is not a supported SharePoint tenant admin URL. This release supports the commercial cloud only; use exactly https://<tenant>-admin.sharepoint.com (no port, path, query, credentials or sovereign-cloud domain)."
+    }
+
+    # Interactive is the default; refuse early in sessions that cannot open a
+    # browser rather than hanging on the loopback listener until it times out.
+    if ($PSCmdlet.ParameterSetName -eq 'SystemBrowser') {
+        Assert-SPOInteractiveSession
     }
 
     $reflection = Get-SPOModuleReflection

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `Connect-SPOServiceCrossPlatform -Url <admin-url>` with no
+  other parameters now starts interactive system-browser sign-in, matching
+  the native `Connect-SPOService` and the README quick start. Previously the
+  URL-only call bound to the certificate parameter set and prompted for
+  `ClientId`, `TenantId` and `CertificatePath`. `-UseSystemBrowser` still
+  works and is now optional. Certificate and `.env` flows are unchanged and
+  still select their parameter sets deterministically; combinations that mix
+  sets fail at parameter binding. Unattended scripts must pass certificate
+  parameters explicitly. To fail fast instead of hanging on a browser that
+  cannot open, interactive sign-in is refused up front over SSH without a
+  forwarded display, on Linux with no `DISPLAY`/`WAYLAND_DISPLAY`, and in
+  Azure Cloud Shell, with a message pointing at certificate auth.
+
 ### Security
 
 - Admin URL validation now accepts only canonical commercial-cloud hosts of

@@ -21,11 +21,19 @@ Get-SPOSite -Limit 10
 Get-SPOOrgAssetsLibrary
 ```
 
+A URL-only call opens your system browser for interactive sign-in, the same
+as the native cmdlet. Unattended scripts must pass certificate parameters
+(see [Authentication](#authentication)); interactive sign-in refuses to start
+over SSH without a display, on headless Linux, or in Azure Cloud Shell.
+
 The module also exports a `Connect-SPOService` alias (and
 `Disconnect-SPOService`) that shadow the broken native cmdlets of the same
-name for the current session. Existing scripts written for Windows can
-import `SPOService.CrossPlatform` on macOS/Linux and keep calling
-`Connect-SPOService` unchanged.
+name for the current session. Scripts written for Windows can import
+`SPOService.CrossPlatform` on macOS/Linux and keep calling
+`Connect-SPOService` for the supported subset: URL-only interactive
+sign-in and certificate app-only auth. Native parameters outside that
+subset (managed identity, credential, region and authentication-URL
+flows) are not implemented; see [Authentication](#authentication).
 
 The module's role is to get the CSOM transport working, not to vet every
 cmdlet. The following have been exercised end-to-end against a real
@@ -143,16 +151,24 @@ Ensure restrictive permissions on the file (`chmod 600 .env`) and never
 commit it. See [`.env.example`](.env.example). For production, prefer
 `Microsoft.PowerShell.SecretManagement` or another secret store.
 
-### 4. Interactive system browser
+### 4. Interactive system browser (default)
 
 ```powershell
-Connect-SPOServiceCrossPlatform `
-    -Url https://contoso-admin.sharepoint.com `
-    -UseSystemBrowser
+Connect-SPOServiceCrossPlatform -Url https://contoso-admin.sharepoint.com
+
+# equivalent, explicit form
+Connect-SPOServiceCrossPlatform -Url https://contoso-admin.sharepoint.com -UseSystemBrowser
 ```
 
-This is the only interactive mode supported on Unix in this release.
-Embedded-webview interactive auth is intentionally not supported.
+This is the default when only `-Url` is given and the only interactive mode
+supported on Unix in this release. Embedded-webview interactive auth is
+intentionally not supported.
+
+Interactive sign-in needs a desktop session to open a browser in. The
+cmdlet refuses up front, before loading the vendor module, when it can tell
+there is none: an SSH session without a forwarded display, Linux with no
+`DISPLAY` or `WAYLAND_DISPLAY`, or Azure Cloud Shell. The error points at
+the certificate parameters to use instead.
 
 > **Azure Cloud Shell is not supported by this flow.** `-UseSystemBrowser`
 > spins up a local HTTP listener on `127.0.0.1` and opens a browser on the
