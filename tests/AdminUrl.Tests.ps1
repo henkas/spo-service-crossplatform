@@ -66,14 +66,25 @@ foreach ($case in $invalid) {
 # certificate set with a placeholder path: if validation ever regresses the
 # call fails on the missing file instead of opening a browser sign-in.
 Import-Module (Join-Path $repo 'SPOService.CrossPlatform.psd1') -Force
+# The rejected URL carries credentials and a query token. The error must name
+# the host so the user can see what was wrong, but never echo those parts:
+# errors land in logs and CI output.
+$spoofed = 'https://admin:' + 'Pa55w0rd-not-real' + '@contoso-admin.sharepoint.com.attacker.example/?token=' + 'tok3n-not-real'
 try {
-    Connect-SPOServiceCrossPlatform -Url 'https://contoso-admin.sharepoint.com.attacker.example' `
+    Connect-SPOServiceCrossPlatform -Url $spoofed `
         -ClientId '00000000-0000-0000-0000-000000000000' -TenantId '00000000-0000-0000-0000-000000000000' `
         -CertificatePath (Join-Path ([IO.Path]::GetTempPath()) 'spo-admin-url-test-does-not-exist.pfx')
     $failures.Add('Connect accepted a spoofed admin host.')
 } catch {
-    if ($_.Exception.Message -notmatch 'https://<tenant>-admin\.sharepoint\.com') {
-        $failures.Add("Connect rejected the URL but with an unexpected message: $($_.Exception.Message)")
+    $msg = $_.Exception.Message
+    if ($msg -notmatch 'https://<tenant>-admin\.sharepoint\.com') {
+        $failures.Add("Connect rejected the URL but with an unexpected message: $msg")
+    }
+    if ($msg -notmatch 'contoso-admin\.sharepoint\.com\.attacker\.example') {
+        $failures.Add("Connect's URL error should name the rejected host: $msg")
+    }
+    if ($msg -match 'Pa55w0rd-not-real|tok3n-not-real|admin:') {
+        $failures.Add("Connect's URL error echoed credentials or query from the input: $msg")
     }
 }
 

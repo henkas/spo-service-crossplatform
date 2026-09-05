@@ -145,7 +145,15 @@ function Connect-SPOServiceCrossPlatform {
     # Validate the URL before loading the vendor module or touching any global
     # state, so a malformed or spoofed host never reaches authentication.
     if (-not (Test-SPOAdminUrlFormat -Url $Url)) {
-        throw "'$($Url.OriginalString)' is not a supported SharePoint tenant admin URL. This release supports the commercial cloud only; use exactly https://<tenant>-admin.sharepoint.com (no port, path, query, credentials or sovereign-cloud domain)."
+        # Never echo the raw input: it may carry user-info or a query token, and
+        # this message ends up in transcripts and CI logs. Name the host only.
+        $shown = if ($Url.IsAbsoluteUri -and $Url.Host) {
+            $portSuffix = if ($Url.IsDefaultPort) { '' } else { ':' + $Url.Port }
+            '{0}://{1}{2}' -f $Url.Scheme, $Url.Host, $portSuffix
+        } else {
+            'The supplied URL'
+        }
+        throw "$shown is not a supported SharePoint tenant admin URL. This release supports the commercial cloud only; use exactly https://<tenant>-admin.sharepoint.com (no port, path, query, credentials or sovereign-cloud domain)."
     }
 
     # Interactive is the default; refuse early in sessions that cannot open a
