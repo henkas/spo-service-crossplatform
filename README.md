@@ -193,6 +193,9 @@ Supported in this release:
 
 Not supported in this release:
 
+- sovereign clouds (`sharepoint.us`, `sharepoint.de`, `sharepoint.cn`): the
+  sign-in authority is fixed to the commercial cloud, and `-Url` accepts only
+  `https://<tenant>-admin.sharepoint.com`
 - embedded-webview interactive auth
 - username/password auth
 - managed identity

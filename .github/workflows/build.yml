@@ -55,6 +55,10 @@ jobs:
         shell: pwsh
         run: ./tests/ModuleContract.Tests.ps1
 
+      - name: Run admin URL contract tests
+        shell: pwsh
+        run: ./tests/AdminUrl.Tests.ps1
+
       - name: Run staging contract tests
         shell: pwsh
         run: ./tests/StageModule.Tests.ps1

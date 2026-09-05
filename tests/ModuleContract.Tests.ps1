@@ -1,7 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot '../Private/Assert-SupportedRuntime.ps1')
-. (Join-Path $PSScriptRoot '../Private/Test-SPOAdminUrlFormat.ps1')
 
 function Assert-ThrowsLike {
     param(
@@ -21,17 +20,6 @@ function Assert-ThrowsLike {
     throw "Expected command to throw an error matching '$Pattern'."
 }
 
-function Assert-InvalidAdminUrl {
-    [CmdletBinding()]
-    param()
-
-    foreach ($invalidUrl in 'http://contoso-admin.sharepoint.com', 'https://contoso.sharepoint.com', 'https://contoso-admin.sharepoint.com/sites/foo', 'https://contoso-admin.sharepoint.com?x=1') {
-        if (Test-SPOAdminUrlFormat -Url ([uri]$invalidUrl)) {
-            throw "Expected invalid admin URL to fail syntactic validation: $invalidUrl"
-        }
-    }
-}
-
 function Assert-RuntimeContract {
     [CmdletBinding()]
     param()
@@ -41,17 +29,6 @@ function Assert-RuntimeContract {
     Assert-ThrowsLike -Pattern 'PowerShell 7\.6 or newer' -ScriptBlock {
         Assert-SupportedRuntime -Version ([version]'7.5.4')
     }
-}
-
-function Assert-AdminUrlContract {
-    [CmdletBinding()]
-    param()
-
-    if (-not (Test-SPOAdminUrlFormat -Url ([uri]'https://contoso-admin.sharepoint.com'))) {
-        throw 'Expected canonical tenant admin URL to pass the syntactic validation helper.'
-    }
-
-    Assert-InvalidAdminUrl
 }
 
 function Get-ConnectCommandContract {
@@ -115,7 +92,6 @@ function Invoke-ModuleContractTest {
     param()
 
     Assert-RuntimeContract
-    Assert-AdminUrlContract
 
     $cmd = Get-ConnectCommandContract
     Assert-ConnectCommandParameter -Command $cmd

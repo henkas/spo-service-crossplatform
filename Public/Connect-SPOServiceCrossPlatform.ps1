@@ -30,7 +30,11 @@ function Connect-SPOServiceCrossPlatform {
     the HttpClient-based executor shim.
 
 .PARAMETER Url
-    The SharePoint admin URL, e.g. https://contoso-admin.sharepoint.com.
+    The SharePoint tenant admin URL, exactly https://<tenant>-admin.sharepoint.com
+    (e.g. https://contoso-admin.sharepoint.com). This release supports the
+    commercial cloud only; sovereign-cloud domains (sharepoint.us, .de, .cn),
+    ports, paths, query strings and credentials in the URL are rejected before
+    the vendor module loads or any sign-in starts.
 
 .PARAMETER ClientId
     App registration (service principal) client ID.
@@ -120,12 +124,14 @@ function Connect-SPOServiceCrossPlatform {
 
     Assert-SupportedRuntime
 
+    # Validate the URL before loading the vendor module or touching any global
+    # state, so a malformed or spoofed host never reaches authentication.
+    if (-not (Test-SPOAdminUrlFormat -Url $Url)) {
+        throw "'$($Url.OriginalString)' is not a supported SharePoint tenant admin URL. This release supports the commercial cloud only; use exactly https://<tenant>-admin.sharepoint.com (no port, path, query, credentials or sovereign-cloud domain)."
+    }
+
     $reflection = Get-SPOModuleReflection
     Assert-NativeShim
-
-    if (-not (Test-SPOAdminUrlFormat -Url $Url)) {
-        throw "'$($Url.AbsoluteUri)' does not look like a SharePoint tenant admin URL. Use the admin site, e.g. https://<tenant>-admin.sharepoint.com."
-    }
 
     $context = New-SPOCmdletContext -Reflection $reflection -Url $Url -HostInstance $Host -ClientTag $ClientTag
 

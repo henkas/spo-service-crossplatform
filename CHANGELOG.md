@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Admin URL validation now accepts only canonical commercial-cloud hosts of
+  the exact form `https://<tenant>-admin.sharepoint.com`. Previously the host
+  check allowed arbitrary suffixes after `.sharepoint.com`, so a URL such as
+  `https://contoso-admin.sharepoint.com.attacker.example` passed validation
+  and reached the sign-in request. Non-default ports, user-info, paths, query
+  strings, fragments, punycode labels and sovereign-cloud domains are rejected,
+  and the check now runs before the vendor module loads. Sovereign clouds
+  (`sharepoint.us`, `.de`, `.cn`) are unsupported until an authority mapping
+  exists; this is a validation fix, not a confirmed token-exfiltration path.
+
 ### Fixed
 
 - Release staging now copies the manifest unchanged, preserving the SPO
