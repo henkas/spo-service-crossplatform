@@ -14,15 +14,18 @@ function Disconnect-SPOServiceCrossPlatform {
 
     # Disconnect only needs to nullify a static property on SPOService;
     # avoid importing Microsoft.Online.SharePoint.PowerShell or loading MSAL
-    # just to tear down state.
-    $module = Get-Module Microsoft.Online.SharePoint.PowerShell | Select-Object -First 1
-    if (-not $module) {
-        return
+    # just to tear down state. Only one vendor version can be loaded per
+    # session, but clear the static on every loaded copy rather than picking
+    # one by list order, and stay idempotent when nothing is loaded.
+    foreach ($module in @(Get-Module Microsoft.Online.SharePoint.PowerShell)) {
+        $dll = Join-Path $module.ModuleBase 'Microsoft.Online.SharePoint.PowerShell.dll'
+        if (-not (Test-Path -LiteralPath $dll)) { continue }
+        $asm = [Reflection.Assembly]::LoadFrom($dll)
+        $svcType = $asm.GetType('Microsoft.Online.SharePoint.PowerShell.SPOService')
+        if (-not $svcType) { continue }
+        $currentServiceProp = $svcType.GetProperty('CurrentService', [Reflection.BindingFlags]'Public,NonPublic,Static')
+        if ($currentServiceProp -and $currentServiceProp.GetSetMethod($true)) {
+            $currentServiceProp.SetValue($null, $null)
+        }
     }
-
-    $dll = Join-Path $module.ModuleBase 'Microsoft.Online.SharePoint.PowerShell.dll'
-    $asm = [Reflection.Assembly]::LoadFrom($dll)
-    $svcType = $asm.GetType('Microsoft.Online.SharePoint.PowerShell.SPOService')
-    $currentServiceProp = $svcType.GetProperty('CurrentService', [Reflection.BindingFlags]'Public,NonPublic,Static')
-    $currentServiceProp.SetValue($null, $null)
 }

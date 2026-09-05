@@ -21,6 +21,11 @@ jobs:
       - name: Install PowerShell 7.6
         uses: ./.github/actions/install-pwsh76
 
+      - name: Check source hygiene on pull requests
+        if: github.event_name == 'pull_request'
+        shell: pwsh
+        run: ./tests/SourceHygiene.Tests.ps1
+
       - name: Install PSScriptAnalyzer
         shell: pwsh
         run: |

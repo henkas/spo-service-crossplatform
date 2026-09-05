@@ -169,12 +169,10 @@ to null that static property.
 
 The first practical blocker was whether `X509Certificate2` private-key
 PFX import actually worked on the macOS host. That proved to be fine on
-the user's machine:
+the user's machine. Certificate identifying fields are omitted:
 
 ```text
-Subject       : CN=spo-mac-app
 HasPrivateKey : True
-Thumbprint    : 3C02812E63295B1B4B2F1D3BB72F6CF6B741DD43
 ```
 
 That eliminated a major source of uncertainty: the native cert path was
@@ -296,12 +294,8 @@ Connect-SPOServiceCrossPlatform -Url https://contoso-admin.sharepoint.com -UseSy
 Get-SPOTenant | Select-Object -First 1 StorageQuota,SharingCapability | Format-List
 ```
 
-Observed result:
-
-```text
-StorageQuota      : 1560576
-SharingCapability : ExternalUserAndGuestSharing
-```
+Observed result: `Get-SPOTenant` completed successfully and returned tenant
+properties. The captured quota and sharing-policy values are omitted.
 
 That establishes the full chain:
 

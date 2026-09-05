@@ -22,7 +22,7 @@ Load the module locally:
 pwsh -c 'Import-Module ./SPOService.CrossPlatform.psd1 -Force'
 ```
 
-Smoke-test (same checks CI runs — no test framework in this repo):
+Import/alias smoke-test (CI also runs standalone contract scripts in `tests/`):
 
 ```bash
 pwsh -c '
@@ -33,7 +33,7 @@ pwsh -c '
 '
 ```
 
-Build matrix (`.github/workflows/build.yml`) runs on macos-latest and ubuntu-latest. Release (`release.yml`) fires on `v*` tags, stages `Public/`, `Private/`, psd1/psm1, and the built DLL into `bin/net10.0/`, rewrites `ModuleVersion` from the tag, and publishes to PSGallery + attaches the DLL to the GitHub release.
+Build matrix (`.github/workflows/build.yml`) runs on macos-latest and ubuntu-latest. Release (`release.yml`) fires on `v*` tags, validates the tag against committed version/prerelease metadata before approval, stages the manifest unchanged with `Public/`, `Private/`, psd1/psm1, and the built DLL under `bin/net10.0/`, and publishes to PSGallery + attaches the DLL to the GitHub release. Changelog notes are passed directly to `Publish-Module -ReleaseNotes`.
 
 ## Architecture
 
@@ -43,10 +43,10 @@ Three layers cooperate through reflection and runtime monkey-patching of types o
 
 The flow is load-sensitive and must stay in this order:
 
-1. `Get-SPOModuleReflection` imports `Microsoft.Online.SharePoint.PowerShell`, loads its MSAL DLL, and reflects out the internal `CmdLetContext`, `OAuthSession`, `SPOService`, and `SPOServiceHelper` types (throws with an actionable message if any are missing from the installed SPO module).
+1. `Get-SPOModuleReflection` picks the vendor version deterministically via `Select-SPOVendorModule` (reuse an already-loaded version if it meets the manifest floor from `Get-SPOVendorMinimumVersion`, else import the highest installed version that does; a loaded vendor assembly can never be swapped, so an old loaded version is refused with new-session advice), loads its MSAL DLL, and reflects out the internal `CmdLetContext`, `OAuthSession`, `SPOService`, and `SPOServiceHelper` types. `Assert-SPOVendorContract` (over `Test-SPOVendorContract`) then probes every reflected ctor/method/setter the connect path uses and throws one compatibility error, with vendor version/path and environment but no tenant data, before any sign-in. `tests/VendorContract.Tests.ps1` exercises both without a tenant.
 2. `Assert-NativeShim` locates and `Add-Type`s the built `SPOService.CrossPlatform.dll`. It probes `bin/net10.0/` first (PSGallery install layout), then `src/.../bin/Release|Debug/net10.0/` (dev layout).
 3. `New-SPOCmdletContext` constructs `CmdLetContext` **via reflection** on its non-public `(string, PSHost, string)` ctor — calling the normal factory goes through `SPOServiceHelper.InstantiateSPOService` which null-derefs `Microsoft.Win32.Registry.CurrentUser` on non-Windows. It also sets `context.WebRequestExecutorFactory` to the shim so all CSOM traffic routes through the HttpClient-based transport.
-4. An `OAuthSession` is built via the vendor module's own auth path: `New-SPOCertificateOAuthSession` calls the reflected `OAuthSession(authority, cert, tenantId, clientId)` ctor + `SignInWithCert`; `New-SPOSystemBrowserOAuthSession` calls the `OAuthSession(authority, useSystemBrowser=$true)` ctor + `SignIn` and polls the returned `Task` via `Wait-SPOAuthenticationTask` so Ctrl+C escapes promptly. There is no custom MSAL client and no `$script:TokenProvider`; refresh/caching is handled by the native session.
+4. `SystemBrowser` is the default parameter set, so a URL-only call is interactive; before the vendor module loads, `Assert-SPOInteractiveSession` refuses interactive sign-in in sessions with no display (SSH without forwarding, headless Linux, Azure Cloud Shell). Certificate sets require `ClientId`/`TenantId` plus a certificate, so binding is deterministic; `tests/ConnectBinding.Tests.ps1` pins this. An `OAuthSession` is built via the vendor module's own auth path: `New-SPOCertificateOAuthSession` calls the reflected `OAuthSession(authority, cert, tenantId, clientId)` ctor + `SignInWithCert`; `New-SPOSystemBrowserOAuthSession` calls the `OAuthSession(authority, useSystemBrowser=$true)` ctor + `SignIn` and polls the returned `Task` via `Wait-SPOAuthenticationTask` so Ctrl+C escapes promptly. There is no custom MSAL client and no `$script:TokenProvider`; refresh/caching is handled by the native session.
 5. The authenticated `OAuthSession` is assigned to `context.OAuthSession` via reflection, then `Assert-SPOAdminSite` runs the vendor's `IsTenantAdminSite` CSOM check (pre-auth validation is syntactic only via `Test-SPOAdminUrlFormat`). `SPOService` is reflection-constructed from the patched context, and the static `SPOService.CurrentService` property is assigned so the official cmdlets (`Get-SPOTenant`, `Get-SPOSite`, …) pick it up transparently.
 
 **2. Native shim — `src/SPOService.CrossPlatform/HttpClientExecutor.cs`**
@@ -68,4 +68,4 @@ Subclasses `Microsoft.SharePoint.Client.WebRequestExecutor` and replaces the sto
 - Anything that pokes at vendor types (`CmdLetContext`, `SPOService`, `WebRequestExecutor`) goes through reflection because these are internal/non-public. Don't try to reference them at compile time from the PowerShell side.
 - The C# project intentionally has `<Private>false</Private>` on the `Microsoft.SharePoint.Client.Runtime` reference — we do **not** redistribute that DLL. `dotnet build` output is a single `SPOService.CrossPlatform.dll`.
 - `docs/investigation/` is preserved deliberately (IL inspector traces, reflection bypass notes, PnP bridge attempt, `ProcessQuery` direct helper). Consult it before proposing architectural changes — most "why not just …" alternatives were already tried.
-- No test framework is wired up. CI validates by importing the module and asserting exports/aliases resolve.
+- CI runs standalone PowerShell contract scripts under `tests/` plus import/alias checks. Pester adoption is planned separately.

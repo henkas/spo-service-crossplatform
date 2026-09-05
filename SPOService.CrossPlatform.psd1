@@ -1,6 +1,6 @@
 @{
     RootModule           = 'SPOService.CrossPlatform.psm1'
-    ModuleVersion        = '0.2.0'
+    ModuleVersion        = '0.3.0'
 
     # A stable GUID for the module identity. Do not change across releases.
     GUID                 = 'b6e4f2e0-9b57-4f4e-9c1b-0c3a4a6a2a10'
@@ -38,6 +38,7 @@
 
     PrivateData = @{
         PSData = @{
+            Prerelease   = 'rc1'
             Tags         = @(
                 'SharePoint'
                 'SharePointOnline'

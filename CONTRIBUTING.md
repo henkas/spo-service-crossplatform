@@ -75,8 +75,8 @@ Load the module locally:
 pwsh -c 'Import-Module ./SPOService.CrossPlatform.psd1 -Force'
 ```
 
-Smoke-test — the same checks CI runs; there is no test framework in this
-repo:
+Import/alias smoke-test (CI also runs the standalone contract scripts in
+`tests/`; Pester adoption is planned separately):
 
 ```pwsh
 Import-Module ./SPOService.CrossPlatform.psd1 -Force -ErrorAction Stop
@@ -123,17 +123,75 @@ certificate, and a `.env` — keep those out of the repo.
 Releases are tag-driven. Pushing a tag matching `v*` (e.g. `v0.2.0`) on
 `main` triggers `.github/workflows/release.yml`, which:
 
-1. Builds the shim with `/p:Version=<tag>`.
-2. Stages the module, rewrites `ModuleVersion` in the `.psd1` from the
-   tag.
-3. Publishes to PSGallery (requires the `PSGALLERY_API_KEY` secret).
-4. Attaches the built DLL to the GitHub release.
+1. Validates the tag against committed `ModuleVersion` and
+   `PrivateData.PSData.Prerelease` before builds or environment approval.
+2. Builds and smoke-tests on macOS and Ubuntu.
+3. After protected-environment approval, builds the release shim and uses
+   `build/Stage-Module.ps1` to copy the module unchanged and validate it.
+4. Passes changelog notes directly to `Publish-Module -ReleaseNotes`,
+   publishes to PSGallery, and attaches the DLL to the GitHub release.
 
-The tag format is strict semver: `vMAJOR.MINOR.PATCH[-PRERELEASE]`. A tag
-that does not match is refused in the `Resolve version from tag` step.
+Tags must be `vMAJOR.MINOR.PATCH[-PRERELEASE]`, with no leading zeros and
+an alphanumeric prerelease suffix (for example, `v0.3.0-rc1`). Suffixes
+are never silently normalized.
 
-Contributors do not cut releases themselves — open a PR, and a maintainer
-will tag.
+Before tagging, commit the numeric version in the source manifest. For an
+RC, commit `Prerelease = 'rc1'`; clear it to `''` for stable. Promote
+completed `Unreleased` notes to a dated `## [0.3.0-rc1]` or
+`## [0.3.0]` section. The resolver prefers RC-specific notes and falls
+back to the numeric section. Missing/blank notes remain empty; Gallery
+uses the manifest's notes link and GitHub uses generated notes.
+
+Contributors do not cut releases themselves; a maintainer owns tagging
+and protected-environment approval.
+
+Run the standalone, non-tenant checks after installing the vendor dependency:
+
+```pwsh
+./tests/ModuleContract.Tests.ps1
+./tests/AdminUrl.Tests.ps1
+./tests/ConnectBinding.Tests.ps1
+./tests/VendorContract.Tests.ps1
+./tests/ConnectFailure.Tests.ps1
+./tests/EnvFile.Tests.ps1
+./tests/StageModule.Tests.ps1
+```
+
+The release tests use synthetic shim bytes to check copying, version/tag
+agreement, literal changelog notes, and cleanup after validation failure.
+PSScriptAnalyzer runs separately in `.github/workflows/lint.yml` on pushes
+and PRs, including `build/` and `tests/`.
+
+After building the real shim, stage the currently committed version:
+
+```pwsh
+$candidateRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('spo-candidate-' + [guid]::NewGuid().ToString('N'))
+$stage = Join-Path $candidateRoot 'SPOService.CrossPlatform'
+./build/Stage-Module.ps1 -OutputPath $stage
+Import-Module (Join-Path $stage 'SPOService.CrossPlatform.psd1') -Force -ErrorAction Stop
+```
+
+Staging never changes the manifest or overwrites existing output. It validates
+in a temporary sibling directory, cleans that directory on failure, and moves
+it into place only on success, allowing the same output path to be retried.
+Import is non-authenticating and does not load the shim until connection;
+these checks do not replace native build or manual authentication testing.
+
+## Source privacy checks
+
+Run `./tests/SourceHygiene.Tests.ps1` to check tracked source files and
+non-ignored additions, including hidden files and `docs/investigation/`.
+The lint workflow runs it on PRs only; staging and binary artifacts do not
+use this check. There is no organization-name blocklist.
+
+Use `contoso` or `contoso-*` hosts (including `contoso-my.sharepoint.com`)
+and all-zero or symbolic IDs in examples. GUID assignments in the module
+manifest are exempt as module identity metadata; this is not a pinned-GUID
+check. The scanner honors Unicode BOMs and reports locations/categories
+without echoing values. Its rules cover recognizable tenant hosts, UUIDs,
+certificate fields, private keys, JWT-shaped tokens, and captured quotas.
+They do not prove arbitrary secrets are absent. Review documentation and
+examples manually too; ignored local files and Git history are not scanned.
 
 ## License
 

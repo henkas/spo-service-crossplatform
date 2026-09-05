@@ -7,6 +7,81 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-05
+
+Stabilisation release ahead of 1.0. Fixes the `0.2.0` package's corrupted
+dependency floor, hardens the pre-authentication boundary (admin URL shape,
+deterministic vendor selection, reflected-API probe), and makes the URL-only
+quick start actually start interactive sign-in. Published first as `0.3.0-rc1`
+for manual verification on macOS and Linux.
+
+### Changed
+
+- **Breaking:** `Connect-SPOServiceCrossPlatform -Url <admin-url>` with no
+  other parameters now starts interactive system-browser sign-in, matching
+  the native `Connect-SPOService` and the README quick start. Previously the
+  URL-only call bound to the certificate parameter set and prompted for
+  `ClientId`, `TenantId` and `CertificatePath`. `-UseSystemBrowser` still
+  works and is now optional. Certificate and `.env` flows are unchanged and
+  still select their parameter sets deterministically; combinations that mix
+  sets fail at parameter binding. Unattended scripts must pass certificate
+  parameters explicitly. To fail fast instead of hanging on a browser that
+  cannot open, interactive sign-in is refused up front over SSH without a
+  forwarded display, on Linux with no `DISPLAY`/`WAYLAND_DISPLAY`, and in
+  Azure Cloud Shell, with a message pointing at certificate auth.
+
+### Security
+
+- Admin URL validation now accepts only canonical commercial-cloud hosts of
+  the exact form `https://<tenant>-admin.sharepoint.com`. Previously the host
+  check allowed arbitrary suffixes after `.sharepoint.com`, so a URL such as
+  `https://contoso-admin.sharepoint.com.attacker.example` passed validation
+  and reached the sign-in request. Non-default ports, user-info, paths, query
+  strings, fragments, punycode labels and sovereign-cloud domains are rejected,
+  and the check now runs before the vendor module loads. Sovereign clouds
+  (`sharepoint.us`, `.de`, `.cn`) are unsupported until an authority mapping
+  exists; this is a validation fix, not a confirmed token-exfiltration path.
+
+### Fixed
+
+- Vendor module selection is deterministic. `Connect-SPOServiceCrossPlatform`
+  reuses an already-loaded `Microsoft.Online.SharePoint.PowerShell` if it
+  meets the manifest minimum (`16.0.23408.12000`), otherwise imports the
+  highest installed version that does, and refuses clearly when the only
+  loaded or installed versions are older (a loaded vendor assembly cannot be
+  swapped; the fix is a new session or `Update-Module`). Previously the first
+  module returned by `Get-Module` was used without ordering or a version check.
+- Every non-public vendor member the connect path relies on (constructors,
+  sign-in methods, settable properties) is now probed before authentication
+  or any global state change. A vendor build that changed its internals fails
+  with one error listing the missing members, vendor version and path, and
+  PowerShell/runtime/OS/architecture, with a link to the issue tracker and no
+  tenant data. `Disconnect-SPOServiceCrossPlatform` no longer depends on
+  module list order and stays idempotent.
+- `-ClientTag` is capped at 13 characters at parameter binding. The vendor
+  prepends its own `TAPS (<version>)` tag and CSOM limits the combined value
+  to 32 characters, so longer tags failed inside the vendor constructor with
+  an opaque out-of-range error on every tested build.
+- A failed connection leaves any existing connection untouched and disposes
+  the partially built vendor context. `SPOService.CurrentService` is only
+  assigned after the admin-site check succeeds; the original error surfaces
+  unchanged.
+- Documented that Ctrl+C during interactive sign-in returns control at once
+  but cannot stop the vendor's sign-in task or loopback listener, which run
+  until the vendor's own timeout; the vendor API exposes no cancellation token.
+- `.env` handling is pinned by tests as opt-in and literal: only the explicit
+  `-EnvPath` (default `./.env`) is read, with no variable, tilde or shell
+  expansion of values.
+- Release staging now copies the manifest unchanged, preserving the SPO
+  dependency floor at `16.0.23408.12000`. The `0.2.0`
+  Gallery package incorrectly declared `0.2.0` as its dependency minimum
+  because the release workflow replaced both assignments.
+- Tags must match committed version and prerelease metadata before builds
+  or publishing approval. Changelog notes are passed directly to publishing,
+  avoiding manifest quoting problems. Failed staging cleans up its output.
+- Removed identifying certificate fields and captured tenant properties from
+  investigation notes; added source-only privacy checks for pull requests.
+
 ## [0.2.0] - 2026-04-22
 
 Drops the hand-rolled MSAL token closure in favour of the vendor module's
@@ -113,6 +188,7 @@ app-only auth only.
   also prevents the process-wide client from accumulating cross-session
   cookie state across reconnects.
 
-[Unreleased]: https://github.com/henkas/spo-service-crossplatform/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/henkas/spo-service-crossplatform/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/henkas/spo-service-crossplatform/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/henkas/spo-service-crossplatform/releases/tag/v0.2.0
 [0.1.0]: https://github.com/henkas/spo-service-crossplatform/releases/tag/v0.1.0

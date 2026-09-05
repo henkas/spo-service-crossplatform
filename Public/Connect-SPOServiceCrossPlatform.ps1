@@ -30,7 +30,11 @@ function Connect-SPOServiceCrossPlatform {
     the HttpClient-based executor shim.
 
 .PARAMETER Url
-    The SharePoint admin URL, e.g. https://tenant-admin.sharepoint.com.
+    The SharePoint tenant admin URL, exactly https://<tenant>-admin.sharepoint.com
+    (e.g. https://contoso-admin.sharepoint.com). This release supports the
+    commercial cloud only; sovereign-cloud domains (sharepoint.us, .de, .cn),
+    ports, paths, query strings and credentials in the URL are rejected before
+    the vendor module loads or any sign-in starts.
 
 .PARAMETER ClientId
     App registration (service principal) client ID.
@@ -49,7 +53,15 @@ function Connect-SPOServiceCrossPlatform {
 
 .PARAMETER UseSystemBrowser
     Starts native OAuthSession interactive auth using the system browser.
-    This is the only interactive mode supported on Unix.
+    This is the default when only -Url is given, so the switch is optional;
+    it remains for explicit scripts. This is the only interactive mode
+    supported on Unix. Interactive sign-in is refused up front in sessions
+    that cannot open a browser (SSH without a forwarded display, Linux with
+    no DISPLAY/WAYLAND_DISPLAY, Azure Cloud Shell); use certificate auth there.
+    Ctrl+C returns control to the prompt immediately, but the vendor's sign-in
+    task and its loopback listener keep running in the background until the
+    vendor's own timeout; the vendor API exposes no cancellation token. No
+    connection is established if you interrupt.
 
 .PARAMETER UseEnvFile
     Opt in to reading ClientId, TenantId, password (PFX password), and
@@ -61,7 +73,9 @@ function Connect-SPOServiceCrossPlatform {
 
 .PARAMETER ClientTag
     Optional client tag forwarded to CmdLetContext (appears in SharePoint ULS
-    logs). Defaults to empty.
+    logs). Defaults to empty. At most 13 characters: the vendor prepends its
+    own "TAPS (<version>)" tag and CSOM caps the combined value at 32, so
+    longer tags fail inside the vendor constructor on every tested build.
 
 .EXAMPLE
     Connect-SPOServiceCrossPlatform -Url https://contoso-admin.sharepoint.com `
@@ -71,11 +85,12 @@ function Connect-SPOServiceCrossPlatform {
     Explicit certificate-based auth.
 
 .EXAMPLE
-    Connect-SPOService -Url https://contoso-admin.sharepoint.com -UseSystemBrowser
+    Connect-SPOService -Url https://contoso-admin.sharepoint.com
 
-    Launches the native system-browser flow on PowerShell 7.6+.
+    URL-only call: launches the native system-browser flow (the default).
+    Equivalent to passing -UseSystemBrowser explicitly.
 #>
-    [CmdletBinding(DefaultParameterSetName = 'CertificatePath')]
+    [CmdletBinding(DefaultParameterSetName = 'SystemBrowser')]
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
         'PSAvoidUsingConvertToSecureStringWithPlainText', '',
         Justification = 'The .env file is already plaintext on disk; ConvertTo-SecureString here is the mandated bridge to X509Certificate2, not a new plaintext surface.')]
@@ -112,107 +127,148 @@ function Connect-SPOServiceCrossPlatform {
         [Parameter(ParameterSetName = 'EnvFile')]
         [string]$EnvPath = (Join-Path (Get-Location) '.env'),
 
-        [Parameter(Mandatory = $true, ParameterSetName = 'SystemBrowser')]
+        # Optional within its set: a URL-only call binds here, so interactive
+        # system-browser sign-in is the default, matching the native cmdlet.
+        [Parameter(ParameterSetName = 'SystemBrowser')]
         [switch]$UseSystemBrowser,
 
+        # The vendor prefixes its own "TAPS (<version>)" tag and CSOM caps the
+        # combined ClientTag at 32 characters, leaving 13 for callers on every
+        # tested build (16.0.23408 through 16.0.27515). Enforce that here so
+        # the failure is a binding error, not a constructor exception.
+        [ValidateLength(0, 13)]
         [string]$ClientTag = ''
     )
 
     Assert-SupportedRuntime
 
+    # Validate the URL before loading the vendor module or touching any global
+    # state, so a malformed or spoofed host never reaches authentication.
+    if (-not (Test-SPOAdminUrlFormat -Url $Url)) {
+        # Never echo the raw input: it may carry user-info or a query token, and
+        # this message ends up in transcripts and CI logs. Name the host only.
+        $shown = if ($Url.IsAbsoluteUri -and $Url.Host) {
+            $portSuffix = if ($Url.IsDefaultPort) { '' } else { ':' + $Url.Port }
+            '{0}://{1}{2}' -f $Url.Scheme, $Url.Host, $portSuffix
+        } else {
+            'The supplied URL'
+        }
+        throw "$shown is not a supported SharePoint tenant admin URL. This release supports the commercial cloud only; use exactly https://<tenant>-admin.sharepoint.com (no port, path, query, credentials or sovereign-cloud domain)."
+    }
+
+    # Interactive is the default; refuse early in sessions that cannot open a
+    # browser rather than hanging on the loopback listener until it times out.
+    if ($PSCmdlet.ParameterSetName -eq 'SystemBrowser') {
+        Assert-SPOInteractiveSession
+    }
+
+    # Deterministic vendor selection, then prove every reflected member exists
+    # before any sign-in or global state change.
     $reflection = Get-SPOModuleReflection
     Assert-NativeShim
-
-    if (-not (Test-SPOAdminUrlFormat -Url $Url)) {
-        throw "'$($Url.AbsoluteUri)' does not look like a SharePoint tenant admin URL. Use the admin site, e.g. https://<tenant>-admin.sharepoint.com."
-    }
+    Assert-SPOVendorContract -Reflection $reflection
 
     $context = New-SPOCmdletContext -Reflection $reflection -Url $Url -HostInstance $Host -ClientTag $ClientTag
 
-    $authority = 'https://login.microsoftonline.com/organizations'
+    # From here on a vendor context exists. Any failure before the final
+    # CurrentService assignment disposes it and leaves an existing connection
+    # untouched; the original error is rethrown unchanged.
+    try {
 
-    switch ($PSCmdlet.ParameterSetName) {
-        'CertificatePath' {
-            $cert = if ($CertificatePassword) {
-                [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath, $CertificatePassword)
-            } else {
-                [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath)
-            }
+        $authority = 'https://login.microsoftonline.com/organizations'
 
-            $oauthSession = New-SPOCertificateOAuthSession `
-                -Reflection $reflection `
-                -Settings @{
-                    Authority   = $authority
-                    Certificate = $cert
-                    TenantId    = $TenantId
-                    ClientId    = $ClientId
-                    Url         = $Url
+        switch ($PSCmdlet.ParameterSetName) {
+            'CertificatePath' {
+                $cert = if ($CertificatePassword) {
+                    [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath, $CertificatePassword)
+                } else {
+                    [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($CertificatePath)
                 }
-        }
-        'CertificateObject' {
-            $oauthSession = New-SPOCertificateOAuthSession `
-                -Reflection $reflection `
-                -Settings @{
-                    Authority   = $authority
-                    Certificate = $Certificate
-                    TenantId    = $TenantId
-                    ClientId    = $ClientId
-                    Url         = $Url
-                }
-        }
-        'EnvFile' {
-            $envMap = Get-LocalEnvMap -Path $EnvPath
-            foreach ($required in 'ClientId', 'TenantId', 'password') {
-                if (-not $envMap.ContainsKey($required) -or [string]::IsNullOrWhiteSpace($envMap[$required])) {
-                    throw "Missing '$required' in $EnvPath"
-                }
+
+                $oauthSession = New-SPOCertificateOAuthSession `
+                    -Reflection $reflection `
+                    -Settings @{
+                        Authority   = $authority
+                        Certificate = $cert
+                        TenantId    = $TenantId
+                        ClientId    = $ClientId
+                        Url         = $Url
+                    }
             }
-            $ClientId = $envMap.ClientId
-            $TenantId = $envMap.TenantId
-            $pfxPath = if ($envMap.ContainsKey('CertificatePath') -and $envMap.CertificatePath) {
-                $envMap.CertificatePath
-            } else {
-                Join-Path (Split-Path -Parent $EnvPath) 'app.pfx'
+            'CertificateObject' {
+                $oauthSession = New-SPOCertificateOAuthSession `
+                    -Reflection $reflection `
+                    -Settings @{
+                        Authority   = $authority
+                        Certificate = $Certificate
+                        TenantId    = $TenantId
+                        ClientId    = $ClientId
+                        Url         = $Url
+                    }
             }
-            if (-not (Test-Path $pfxPath)) {
-                throw "Certificate file not found: $pfxPath"
-            }
-            $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfxPath, (ConvertTo-SecureString $envMap.password -AsPlainText -Force))
-            $oauthSession = New-SPOCertificateOAuthSession `
-                -Reflection $reflection `
-                -Settings @{
-                    Authority   = $authority
-                    Certificate = $cert
-                    TenantId    = $TenantId
-                    ClientId    = $ClientId
-                    Url         = $Url
+            'EnvFile' {
+                $envMap = Get-LocalEnvMap -Path $EnvPath
+                foreach ($required in 'ClientId', 'TenantId', 'password') {
+                    if (-not $envMap.ContainsKey($required) -or [string]::IsNullOrWhiteSpace($envMap[$required])) {
+                        throw "Missing '$required' in $EnvPath"
+                    }
                 }
+                $ClientId = $envMap.ClientId
+                $TenantId = $envMap.TenantId
+                $pfxPath = if ($envMap.ContainsKey('CertificatePath') -and $envMap.CertificatePath) {
+                    $envMap.CertificatePath
+                } else {
+                    Join-Path (Split-Path -Parent $EnvPath) 'app.pfx'
+                }
+                if (-not (Test-Path $pfxPath)) {
+                    throw "Certificate file not found: $pfxPath"
+                }
+                $cert = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new($pfxPath, (ConvertTo-SecureString $envMap.password -AsPlainText -Force))
+                $oauthSession = New-SPOCertificateOAuthSession `
+                    -Reflection $reflection `
+                    -Settings @{
+                        Authority   = $authority
+                        Certificate = $cert
+                        TenantId    = $TenantId
+                        ClientId    = $ClientId
+                        Url         = $Url
+                    }
+            }
+            'SystemBrowser' {
+                $oauthSession = New-SPOSystemBrowserOAuthSession `
+                    -Reflection $reflection `
+                    -Authority $authority `
+                    -Url $Url
+            }
         }
-        'SystemBrowser' {
-            $oauthSession = New-SPOSystemBrowserOAuthSession `
-                -Reflection $reflection `
-                -Authority $authority `
-                -Url $Url
+
+        $oauthSessionProp = $reflection.CmdLetContext.GetProperty(
+            'OAuthSession',
+            [Reflection.BindingFlags]'Public,NonPublic,Instance')
+        if (-not $oauthSessionProp) {
+            throw "Internal error: Microsoft.Online.SharePoint.PowerShell.CmdLetContext.OAuthSession is not present in the installed SPO module."
         }
+        $oauthSessionProp.SetValue($context, $oauthSession)
+
+        Assert-SPOAdminSite -Reflection $reflection -Context $context -Url $Url
+
+        $svcCtor = $reflection.SPOService.GetConstructor(
+            [Reflection.BindingFlags]'Public,NonPublic,Instance',
+            $null,
+            @($reflection.CmdLetContext),
+            $null)
+        if (-not $svcCtor) {
+            throw "Internal error: Microsoft.Online.SharePoint.PowerShell.SPOService(CmdLetContext) is not present in the installed SPO module."
+        }
+        $service = $svcCtor.Invoke(@($context))
+
+        $currentServiceProp = $reflection.SPOService.GetProperty('CurrentService', [Reflection.BindingFlags]'Public,NonPublic,Static')
+        if (-not $currentServiceProp -or -not $currentServiceProp.GetSetMethod($true)) {
+            throw "Internal error: Microsoft.Online.SharePoint.PowerShell.SPOService.CurrentService is not settable in the installed SPO module."
+        }
+        $currentServiceProp.SetValue($null, $service)
+    } catch {
+        if ($context -is [System.IDisposable]) { $context.Dispose() }
+        throw
     }
-
-    $oauthSessionProp = $reflection.CmdLetContext.GetProperty(
-        'OAuthSession',
-        [Reflection.BindingFlags]'Public,NonPublic,Instance')
-    if (-not $oauthSessionProp) {
-        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.CmdLetContext.OAuthSession is not present in the installed SPO module."
-    }
-    $oauthSessionProp.SetValue($context, $oauthSession)
-
-    Assert-SPOAdminSite -Reflection $reflection -Context $context -Url $Url
-
-    $svcCtor = $reflection.SPOService.GetConstructor(
-        [Reflection.BindingFlags]'Public,NonPublic,Instance',
-        $null,
-        @($reflection.CmdLetContext),
-        $null)
-    $service = $svcCtor.Invoke(@($context))
-
-    $currentServiceProp = $reflection.SPOService.GetProperty('CurrentService', [Reflection.BindingFlags]'Public,NonPublic,Static')
-    $currentServiceProp.SetValue($null, $service)
 }

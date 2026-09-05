@@ -17,7 +17,20 @@ permissions:
 # the need for a cross-workflow `build`-is-green check: if the tagged commit
 # cannot build or import, publishing never runs.
 jobs:
+  validate-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install PowerShell 7.6
+        uses: ./.github/actions/install-pwsh76
+      - name: Validate committed release metadata before builds and approval
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: ./build/Resolve-Release.ps1 -Tag $env:TAG_NAME
+
   smoke-test:
+    needs: validate-tag
     strategy:
       fail-fast: true
       matrix:
@@ -53,6 +66,30 @@ jobs:
         shell: pwsh
         run: ./tests/ModuleContract.Tests.ps1
 
+      - name: Run admin URL contract tests
+        shell: pwsh
+        run: ./tests/AdminUrl.Tests.ps1
+
+      - name: Run connect binding contract tests
+        shell: pwsh
+        run: ./tests/ConnectBinding.Tests.ps1
+
+      - name: Run vendor contract tests
+        shell: pwsh
+        run: ./tests/VendorContract.Tests.ps1
+
+      - name: Run connect failure-path tests
+        shell: pwsh
+        run: ./tests/ConnectFailure.Tests.ps1
+
+      - name: Run env-file contract tests
+        shell: pwsh
+        run: ./tests/EnvFile.Tests.ps1
+
+      - name: Run staging contract tests
+        shell: pwsh
+        run: ./tests/StageModule.Tests.ps1
+
       - name: Import module (smoke test)
         shell: pwsh
         run: |
@@ -76,7 +113,7 @@ jobs:
           }
 
   publish:
-    needs: smoke-test
+    needs: [validate-tag, smoke-test]
     runs-on: ubuntu-latest
     # Route to the protected environment matching the tag shape:
     #   v1.2.3       -> PSGallery Publishing  (stable)
@@ -106,168 +143,27 @@ jobs:
           Install-Module Microsoft.Online.SharePoint.PowerShell `
               -Scope CurrentUser -Force -AllowClobber
 
-      - name: Resolve version and prerelease from tag
-        id: version
+      - name: Resolve release metadata
+        id: release
         shell: pwsh
         run: |
-          $tag = $env:TAG_NAME
-          if (-not $tag) { throw 'TAG_NAME env is empty.' }
-          if ($tag -notmatch '^v(?<version>\d+\.\d+\.\d+)(-(?<prerelease>[A-Za-z0-9\.\-]+))?$') {
-              throw "Refusing to build: tag '$tag' is not semver."
-          }
-          $version = $Matches.version
-          $preRaw  = $Matches.prerelease
-
-          # PSGallery / NuGet prerelease strings must be alphanumeric; dots
-          # and hyphens are rejected. Strip them: 'beta.1' -> 'beta1',
-          # 'rc-2' -> 'rc2'. If stripping yields empty, fail loudly rather
-          # than silently publish as stable.
-          $prerelease = if ($preRaw) { ($preRaw -replace '[^A-Za-z0-9]', '') } else { '' }
-          if ($preRaw -and -not $prerelease) {
-              throw "Prerelease suffix '$preRaw' reduces to empty after alphanumeric-only filtering."
-          }
-
-          $isPrerelease = if ($prerelease) { 'true' } else { 'false' }
-
-          "version=$version"           >> $env:GITHUB_OUTPUT
-          "prerelease=$prerelease"     >> $env:GITHUB_OUTPUT
-          "isPrerelease=$isPrerelease" >> $env:GITHUB_OUTPUT
-          Write-Host "Resolved: version=$version prerelease='$prerelease' (isPrerelease=$isPrerelease) from tag $tag"
+          $release = ./build/Resolve-Release.ps1 -Tag $env:TAG_NAME
+          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+          Set-Content -LiteralPath $notesPath -Value $release.ReleaseNotes -NoNewline -Encoding utf8
+          "version=$($release.Version)" >> $env:GITHUB_OUTPUT
+          "isPrerelease=$($release.IsPrerelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          "path=$notesPath" >> $env:GITHUB_OUTPUT
+          "hasNotes=$((-not [string]::IsNullOrWhiteSpace($release.ReleaseNotes)).ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
       - name: Build native shim
-        run: >-
-          dotnet build -c Release
-          /p:Version=${{ steps.version.outputs.version }}
-          src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
-
-      - name: Extract release notes from CHANGELOG.md
-        id: notes
         shell: pwsh
         env:
-          MODULE_VERSION: ${{ steps.version.outputs.version }}
-          TAG_NAME:       ${{ github.ref_name }}
-        run: |
-          $version = $env:MODULE_VERSION
-          $tag     = $env:TAG_NAME
-          $lines   = Get-Content CHANGELOG.md
-
-          # Prefer a section matching the tag's own version string (supports
-          # per-prerelease entries like '## [0.2.0-beta1]'); fall back to the
-          # numeric version section.
-          $candidates = @()
-          $tagVersion = $tag.TrimStart('v')
-          if ($tagVersion -ne $version) { $candidates += $tagVersion }
-          $candidates += $version
-
-          $body = $null
-          foreach ($candidate in $candidates) {
-              $startMatch = $lines |
-                  Select-String -Pattern ("^\#\#\s+\[" + [regex]::Escape($candidate) + "\]") |
-                  Select-Object -First 1
-              if (-not $startMatch) { continue }
-
-              $start     = $startMatch.LineNumber                   # 1-based
-              $remaining = $lines[$start..($lines.Count - 1)]       # lines AFTER the header
-              $endRel    = ($remaining |
-                  Select-String -Pattern '^\#\#\s+\[' |
-                  Select-Object -First 1).LineNumber
-              $section = if ($endRel) { $remaining[0..($endRel - 2)] } else { $remaining }
-              $body = ($section -join "`n").Trim()
-              if ($body) { break }
-          }
-
-          if (-not $body) {
-              Write-Host "::warning::No CHANGELOG.md entry for $version (or $tag). Release will use auto-generated notes."
-              $body = ''
-          }
-
-          $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
-          Set-Content -Path $notesPath -Value $body
-
-          $hasNotes = if ($body) { 'true' } else { 'false' }
-          "path=$notesPath"    >> $env:GITHUB_OUTPUT
-          "hasNotes=$hasNotes" >> $env:GITHUB_OUTPUT
+          MODULE_VERSION: ${{ steps.release.outputs.version }}
+        run: dotnet build -c Release "/p:Version=$env:MODULE_VERSION" src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
 
       - name: Assemble module package
         shell: pwsh
-        env:
-          MODULE_VERSION:      ${{ steps.version.outputs.version }}
-          MODULE_PRERELEASE:   ${{ steps.version.outputs.prerelease }}
-          RELEASE_NOTES_PATH:  ${{ steps.notes.outputs.path }}
-        run: |
-          $version = $env:MODULE_VERSION
-          $pre     = $env:MODULE_PRERELEASE
-          if (-not $version) { throw 'MODULE_VERSION env is empty.' }
-
-          $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
-          if (Test-Path $stage) { Remove-Item -Recurse -Force $stage }
-          New-Item -ItemType Directory -Force -Path $stage | Out-Null
-
-          Copy-Item -Recurse `
-              SPOService.CrossPlatform.psd1, SPOService.CrossPlatform.psm1, Public, Private, LICENSE, NOTICE, README.md, CHANGELOG.md `
-              -Destination $stage
-
-          $binDir = Join-Path $stage 'bin/net10.0'
-          New-Item -ItemType Directory -Force -Path $binDir | Out-Null
-          Copy-Item src/SPOService.CrossPlatform/bin/Release/net10.0/SPOService.CrossPlatform.dll -Destination $binDir
-
-          $psd1 = Join-Path $stage 'SPOService.CrossPlatform.psd1'
-          $content = Get-Content $psd1 -Raw
-          $content = $content -replace "ModuleVersion\s*=\s*'[^']*'", "ModuleVersion = '$version'"
-
-          $releaseNotes = if ($env:RELEASE_NOTES_PATH -and (Test-Path $env:RELEASE_NOTES_PATH)) {
-              Get-Content $env:RELEASE_NOTES_PATH -Raw
-          } else {
-              ''
-          }
-
-          if ($releaseNotes -match "'@") {
-              throw "Release notes contain the sequence ''@', which cannot be embedded safely in the staged module manifest."
-          }
-
-          # Build the replacement as a regular expandable string rather than
-          # a here-string: PowerShell requires a here-string's closing '@/"@
-          # to sit at column 0 of its line, which conflicts with YAML block
-          # scalar indentation rules for `run: |`. Embedding the `'@ closer
-          # after a literal newline produces the same on-disk layout in the
-          # staged psd1 without breaking the workflow YAML.
-          $releaseNotesLiteral = if ($releaseNotes) {
-              "ReleaseNotes = @'`n$releaseNotes`n'@"
-          } else {
-              "ReleaseNotes = ''"
-          }
-          $content = $content -replace "ReleaseNotes\s*=\s*'[^']*'", $releaseNotesLiteral
-
-          if ($pre) {
-              # Inject Prerelease into PSData. PSGallery reads this field to
-              # mark the package as a prerelease. The stock manifest has no
-              # Prerelease line; if a future commit adds one, update it in
-              # place rather than duplicating.
-              if ($content -match "Prerelease\s*=\s*'[^']*'") {
-                  $content = $content -replace "Prerelease\s*=\s*'[^']*'", "Prerelease   = '$pre'"
-              } else {
-                  # Insert as the first entry inside the PSData hashtable.
-                  $script:injected = $false
-                  $content = [regex]::Replace(
-                      $content,
-                      '(?<open>PSData\s*=\s*@\{)(?<nl>\r?\n)',
-                      {
-                          param($m)
-                          $script:injected = $true
-                          "$($m.Groups['open'].Value)$($m.Groups['nl'].Value)            Prerelease   = '$pre'$($m.Groups['nl'].Value)"
-                      },
-                      [System.Text.RegularExpressions.RegexOptions]::None,
-                      [TimeSpan]::FromSeconds(2))
-                  if (-not $script:injected) {
-                      throw "Could not locate PSData block in $psd1 to inject Prerelease."
-                  }
-              }
-          }
-
-          Set-Content -Path $psd1 -Value $content -NoNewline
-
-          Write-Host "Staged module at $stage (version $version, prerelease='$pre')"
-          Get-ChildItem -Recurse $stage | Select-Object FullName
+        run: ./build/Stage-Module.ps1 -OutputPath (Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform')
 
       - name: Validate staged module (Test-ModuleManifest + import)
         shell: pwsh
@@ -309,6 +205,7 @@ jobs:
         shell: pwsh
         env:
           PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+          RELEASE_NOTES_PATH: ${{ steps.release.outputs.path }}
         run: |
           # Fail loudly if the environment secret is missing. Previously this
           # warned and skipped, which masked a misconfigured environment and
@@ -317,7 +214,10 @@ jobs:
               throw "PSGALLERY_API_KEY is not set on the selected environment. Configure it on 'PSGallery Publishing' and 'PSGallery Prerelease' before tagging."
           }
           $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
-          Publish-Module -Path $stage -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
+          $publish = @{ Path = $stage; NuGetApiKey = $env:PSGALLERY_API_KEY; Verbose = $true }
+          $notes = ([string](Get-Content -LiteralPath $env:RELEASE_NOTES_PATH -Raw)).Trim()
+          if (-not [string]::IsNullOrWhiteSpace($notes)) { $publish.ReleaseNotes = $notes }
+          Publish-Module @publish
 
       # Use the preinstalled gh CLI rather than a marketplace action because
       # the enterprise Actions policy restricts third-party actions to those
@@ -327,17 +227,16 @@ jobs:
       # upload with a hard fail if the asset is missing).
       #
       # No untrusted event strings are interpolated into run:; TAG_NAME is
-      # already validated as semver in the "Resolve version and prerelease
-      # from tag" step upstream, and NOTES_PATH / HAS_NOTES / IS_PRERELEASE
+      # already validated as semver in the "Resolve release metadata" step upstream, and NOTES_PATH / HAS_NOTES / IS_PRERELEASE
       # are outputs produced by our own steps.
       - name: Create GitHub release
         shell: bash
         env:
           GH_TOKEN:      ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME:      ${{ github.ref_name }}
-          NOTES_PATH:    ${{ steps.notes.outputs.path }}
-          HAS_NOTES:     ${{ steps.notes.outputs.hasNotes }}
-          IS_PRERELEASE: ${{ steps.version.outputs.isPrerelease }}
+          NOTES_PATH:    ${{ steps.release.outputs.path }}
+          HAS_NOTES:     ${{ steps.release.outputs.hasNotes }}
+          IS_PRERELEASE: ${{ steps.release.outputs.isPrerelease }}
         run: |
           set -euo pipefail
           ASSET="src/SPOService.CrossPlatform/bin/Release/net10.0/SPOService.CrossPlatform.dll"
