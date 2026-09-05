@@ -65,6 +65,13 @@ foreach ($field in 'PowerShell', 'Runtime', 'OS', 'Architecture') {
     Assert-That (-not [string]::IsNullOrWhiteSpace([string]$reflection.Environment.$field)) "Reflection environment must include $field for diagnostics."
 }
 
+# Load the built shim first so the probe also checks that the vendor's
+# WebRequestExecutorFactory property can accept our factory type. Without the
+# shim that branch is skipped and a vendor type change would go unnoticed.
+Assert-NativeShim
+$shimType = 'SPOService.CrossPlatform.HttpClientExecutorFactory' -as [type]
+Assert-That ($null -ne $shimType) 'Native shim must be loaded so the executor-factory assignability check runs.'
+
 $report = Test-SPOVendorContract -Reflection $reflection
 $expectedMembers = @(
     'CmdLetContext(string, PSHost, string)'
@@ -111,6 +118,32 @@ try {
     Assert-That ($msg -match [regex]::Escape($reflection.Environment.PowerShell)) 'Compatibility error must include the PowerShell version.'
     foreach ($m in $expectedMembers) { Assert-That ($msg.Contains($m)) "Compatibility error must list missing member '$m'." }
 }
+
+# --- D2. Executor-factory property exists but cannot accept the shim --------
+# A context type whose WebRequestExecutorFactory setter has the wrong type must
+# be reported as missing, while an object-typed OAuthSession setter still passes.
+Add-Type -TypeDefinition @'
+namespace SPOServiceContractTests {
+    public class WrongFactoryContext {
+        public string WebRequestExecutorFactory { get; set; }
+        public object OAuthSession { get; set; }
+    }
+}
+'@
+$wrongFactory = [pscustomobject]@{
+    Version          = [version]'99.0.0.2'
+    ModuleBase       = '/fake/99.0.0.2'
+    MinimumVersion   = $manifestFloor
+    Environment      = $reflection.Environment
+    Assembly         = $null
+    CmdLetContext    = [SPOServiceContractTests.WrongFactoryContext]
+    OAuthSession     = [object]
+    SPOService       = [object]
+    SPOServiceHelper = [object]
+}
+$wrongReport = Test-SPOVendorContract -Reflection $wrongFactory
+Assert-That ($wrongReport.Missing -contains 'CmdLetContext.WebRequestExecutorFactory setter') 'A factory property that cannot accept the shim type must be reported as missing.'
+Assert-That ($wrongReport.Missing -notcontains 'CmdLetContext.OAuthSession setter') 'A settable OAuthSession property must not be reported as missing.'
 
 # --- E. Already-loaded version below the minimum (only where one exists) ----
 $belowFloor = $available | Where-Object { $_.Version -lt $manifestFloor } | Sort-Object Version -Descending | Select-Object -First 1
