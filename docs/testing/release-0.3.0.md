@@ -75,17 +75,26 @@ Connect-SPOService -Url <admin-url> -ClientId <id> -TenantId <id> -CertificatePa
 
 Record:
 
-- OS/version, architecture:
-- PowerShell version:
-- Runtime (FrameworkDescription):
-- SPOService.CrossPlatform version: 0.3.0 (local build, commit:)
-- Vendor module version loaded (`(Get-Module Microsoft.Online.SharePoint.PowerShell).Version`):
-- Auth flow: certificate (PFX path)
-- Connect: pass / fail
-- Read-only cmdlets exercised and result:
+- OS/version, architecture: macOS 27.2.0, Arm64
+- PowerShell version: 7.6.4
+- Runtime (FrameworkDescription): .NET 10.0.10
+- SPOService.CrossPlatform version: 0.3.0 (local build, commit: 075d9f2)
+- Vendor module version loaded (`(Get-Module Microsoft.Online.SharePoint.PowerShell).Version`): 16.0.27709.12000
+- Auth flow: certificate (PFX path), app-only with SharePoint `Sites.FullControl.All`
+- Connect: pass
+- Read-only cmdlets exercised and result: `Get-SPOTenant`, `Get-SPOSite -Limit 10`,
+  `Get-SPOOrgAssetsLibrary`, `Get-SPOUser -Site <site URL>`: all pass
 - Reversible write exercised, result, and confirmation it was undone:
-- `Disconnect-SPOService` then a `Get-SPOTenant` fails as expected: pass / fail
-- Sanitised error category/message, if any:
+  `Set-SPOTenant -ShowAllUsersClaim` flipped, read back flipped, restored, read
+  back original: pass
+- `Disconnect-SPOService` then a `Get-SPOTenant` fails as expected: pass ("No
+  connection available")
+- Sanitised error category/message, if any: none from the module. (`Get-SPOUser
+  -Site` with a bare site name instead of a URL fails parameter binding in the
+  vendor's `SpoSitePipeBind`; that is vendor input validation, not a defect.)
+- Negative checks (same machine, vendor 16.0.27709.12000): spoofed host refused
+  naming the host only, no browser: pass; headless guard refused and pointed at
+  certificate auth: pass; 14-character `-ClientTag` rejected at binding: pass
 
 ### Row 2: macOS arm64, current vendor, system browser (required)
 
@@ -107,16 +116,32 @@ browser without signing in. Expected: the prompt returns within about a second
 connection, and the browser tab may remain until the vendor times out. Record:
 pass / fail. (`0.3.0-rc1` failed this: the prompt was blocked for the full 90 s.)
 
+Result (macOS 27.2.0 Arm64, PowerShell 7.6.4, .NET 10.0.10, vendor
+16.0.27709.12000, local build commit d5df8a3):
+
+- Browser sign-in: pass; `Get-SPOTenant` after connect: pass
+- Second Connect in the same session after `Disconnect-SPOService`: pass
+- Ctrl+C before signing in: prompt returned in about a second; `Get-SPOTenant`
+  then failed with "No connection available": pass
+- Sanitised error category/message, if any: none
+
 ### Row 3: Ubuntu x64, current vendor, certificate auth (required)
 
 Same command as Row 1. Record the same fields. This is the first human-run
 Linux authentication for the module; note anything surprising even if it passes.
+
+Result: pass, reported by the maintainer as behaving exactly as on macOS. The
+run was done separately and its outputs were not captured, so the per-field
+record above is not available for this row.
 
 ### Row 4: Ubuntu x64, current vendor, system browser (if a desktop is available)
 
 Same as Row 2 on a Linux desktop session. If only SSH is available, record
 that the headless guard refused with the expected message and mark the row
 "narrowed out: no desktop".
+
+Result: pass, reported by the maintainer as behaving exactly as on macOS;
+outputs not captured (same note as Row 3).
 
 ### Row 5: declared minimum vendor 16.0.26615.12013 (required, macOS or Ubuntu)
 
@@ -135,12 +160,25 @@ Get-SPOSite -Limit 5 | Out-Null
 Record: same fields as Row 1; vendor version must read 16.0.26615.12013.
 Browser flow on this row is optional.
 
+Result (macOS 27.2.0 Arm64, PowerShell 7.6.4, .NET 10.0.10, local build commit
+d5df8a3):
+
+- Vendor module version loaded: 16.0.26615.12013
+- Auth flow: certificate (PFX path)
+- Connect: pass; `Get-SPOTenant`: pass; `Get-SPOSite -Limit 5`: pass (the
+  vendor's "more results were found" warning is expected with `-Limit`)
+- `Disconnect-SPOService`: pass
+- Sanitised error category/message, if any: none
+
 ## Result
 
-- All required rows pass: yes / no
-- Defects found (link issues):
-- Decision: release 0.3.0 / fix and re-verify before tagging
-- Signed off by, date:
+- All required rows pass: yes (Rows 3 and 4 on the maintainer's report, outputs
+  not captured)
+- Defects found (link issues): none in manual testing. Found and fixed on the
+  release branch before the run: vendor 16.0.27709.12000 changed the browser
+  `OAuthSession` constructor; an older or stale shim DLL was not refused clearly.
+- Decision: release 0.3.0
+- Signed off by, date: Henki Papp, 2026-10-16
 
 ## Promotion steps (after sign-off)
 
