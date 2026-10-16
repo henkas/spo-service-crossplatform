@@ -165,9 +165,15 @@ jobs:
           MODULE_VERSION: ${{ steps.release.outputs.version }}
         run: dotnet build -c Release "/p:Version=$env:MODULE_VERSION" src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
 
+      # The PowerShell Gallery shows the ReleaseNotes of the packaged manifest
+      # (not the nuspec), verbatim. Staging writes this version's changelog
+      # section into the staged copy as plain text and verifies nothing else
+      # in the manifest changed; the source manifest keeps its changelog link.
       - name: Assemble module package
         shell: pwsh
-        run: ./build/Stage-Module.ps1 -OutputPath (Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform')
+        env:
+          RELEASE_NOTES_PATH: ${{ steps.release.outputs.path }}
+        run: ./build/Stage-Module.ps1 -OutputPath (Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform') -ReleaseNotesPath $env:RELEASE_NOTES_PATH
 
       - name: Validate staged module (Test-ModuleManifest + import)
         shell: pwsh
@@ -209,7 +215,6 @@ jobs:
         shell: pwsh
         env:
           PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
-          RELEASE_NOTES_PATH: ${{ steps.release.outputs.path }}
         run: |
           # Fail loudly if the environment secret is missing. Previously this
           # warned and skipped, which masked a misconfigured environment and
@@ -218,10 +223,9 @@ jobs:
               throw "PSGALLERY_API_KEY is not set on the selected environment. Configure it on 'PSGallery Publishing' and 'PSGallery Prerelease' before tagging."
           }
           $stage = Join-Path $env:RUNNER_TEMP 'SPOService.CrossPlatform'
-          $publish = @{ Path = $stage; NuGetApiKey = $env:PSGALLERY_API_KEY; Verbose = $true }
-          $notes = ([string](Get-Content -LiteralPath $env:RELEASE_NOTES_PATH -Raw)).Trim()
-          if (-not [string]::IsNullOrWhiteSpace($notes)) { $publish.ReleaseNotes = $notes }
-          Publish-Module @publish
+          # ReleaseNotes come from the staged manifest (see "Assemble module
+          # package"); Publish-Module copies them into the nuspec as well.
+          Publish-Module -Path $stage -NuGetApiKey $env:PSGALLERY_API_KEY -Verbose
 
       # Use the preinstalled gh CLI rather than a marketplace action because
       # the enterprise Actions policy restricts third-party actions to those

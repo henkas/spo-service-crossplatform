@@ -33,7 +33,7 @@ pwsh -c '
 '
 ```
 
-Build matrix (`.github/workflows/build.yml`) runs on macos-latest and ubuntu-latest. Release (`release.yml`) fires on `v*` tags, validates the tag against committed version/prerelease metadata before approval, stages the manifest unchanged with `Public/`, `Private/`, psd1/psm1, and the built DLL under `bin/net10.0/`, and publishes to PSGallery + attaches the DLL to the GitHub release. Changelog notes are passed directly to `Publish-Module -ReleaseNotes`.
+Build matrix (`.github/workflows/build.yml`) runs on macos-latest and ubuntu-latest. Release (`release.yml`) fires on `v*` tags, validates the tag against committed version/prerelease metadata before approval, stages `Public/`, `Private/`, psd1/psm1, and the built DLL under `bin/net10.0/`, and publishes to PSGallery + attaches the DLL to the GitHub release. The staged manifest is the source manifest except for `PrivateData.PSData.ReleaseNotes`, which `build/Stage-Module.ps1 -ReleaseNotesPath` replaces with the version's CHANGELOG section as plain text (`build/ConvertTo-GalleryReleaseNotes.ps1`), because the Gallery displays the packaged manifest's notes verbatim; staging re-parses the result and fails if any other key changed. The GitHub release gets the Markdown section.
 
 ## Architecture
 

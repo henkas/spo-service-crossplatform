@@ -9,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $stageScript = Join-Path $repo 'build/Stage-Module.ps1'
 $resolve = Join-Path $repo 'build/Resolve-Release.ps1'
+$toGallery = Join-Path $repo 'build/ConvertTo-GalleryReleaseNotes.ps1'
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('spo-release-tests-' + [guid]::NewGuid().ToString('N'))
 $null = New-Item -ItemType Directory -Path $testRoot
 $script:passed = 0
@@ -47,7 +48,7 @@ try {
         foreach ($pre in '', 'rc1') {
             Test-Case "$version prerelease='$pre': tag and unchanged staging" {
                 # Fixture owns its version; no substitutions in a live manifest.
-                $options = @{ Path = $manifest; RootModule = 'SPOService.CrossPlatform.psm1'; ModuleVersion = $version; Author = 'Example'; Description = 'Example'; RequiredModules = @(@{ ModuleName = 'Microsoft.Online.SharePoint.PowerShell'; ModuleVersion = '16.0.23408.12000' }) }
+                $options = @{ Path = $manifest; RootModule = 'SPOService.CrossPlatform.psm1'; ModuleVersion = $version; Author = 'Example'; Description = 'Example'; ReleaseNotes = 'https://example.invalid/CHANGELOG.md'; RequiredModules = @(@{ ModuleName = 'Microsoft.Online.SharePoint.PowerShell'; ModuleVersion = '16.0.23408.12000' }) }
                 if ($pre) { $options.Prerelease = $pre }
                 New-ModuleManifest @options
                 $tag = "v$version" + $(if ($pre) { "-$pre" })
@@ -96,6 +97,58 @@ try {
         Assert-Condition (-not (Test-Path $output)) 'Failed output remained.'
         Set-Content -LiteralPath $manifest -Value $saved -NoNewline
         & $stageScript -SourcePath $fixture -OutputPath $output
+    }
+    Test-Case 'changelog Markdown becomes plain Gallery text' {
+        $markdown = @'
+Intro paragraph with `code` and a
+hard wrap.
+
+### Changed
+
+- **Breaking:** `Connect-X -Url` now
+  starts sign-in; see [the docs](https://example.invalid/docs).
+- Second item.
+
+### Fixed
+
+- Third item.
+'@
+        $expected = "Intro paragraph with code and a hard wrap.`n`nChanged:`n`n- Breaking: Connect-X -Url now starts sign-in; see the docs (https://example.invalid/docs).`n- Second item.`n`nFixed:`n`n- Third item."
+        $actual = & $toGallery -Markdown $markdown
+        Assert-Condition ($actual -ceq $expected) "Gallery notes differ:`n$actual"
+        Assert-Condition ((& $toGallery -Markdown '') -ceq '') 'Empty notes should stay empty.'
+    }
+    Test-Case 'release notes are written into the staged manifest only' {
+        $notesFile = Join-Path $testRoot 'notes.md'
+        $quirky = "Don$([char]0x2019)t lose ASCII ' quotes, `$variables, @' mid-line or '@ mid-line."
+        Set-Content -LiteralPath $notesFile -Value "### Fixed`n`n- **Bold** and ``code``.`n- $quirky`n" -NoNewline
+        $sourceBefore = Get-FileHash $manifest
+        $output = Join-Path $testRoot 'notes/SPOService.CrossPlatform'
+        & $stageScript -SourcePath $fixture -OutputPath $output -ReleaseNotesPath $notesFile
+        $staged = Import-PowerShellDataFile (Join-Path $output 'SPOService.CrossPlatform.psd1')
+        $source = Import-PowerShellDataFile $manifest
+        Assert-Condition (($staged.PrivateData.PSData.ReleaseNotes -replace "`r`n", "`n") -ceq "Fixed:`n`n- Bold and code.`n- $quirky") "Staged notes wrong: $($staged.PrivateData.PSData.ReleaseNotes)"
+        Assert-Condition ($staged.ModuleVersion -eq $source.ModuleVersion -and $staged.RequiredModules[0].ModuleVersion -eq '16.0.23408.12000') 'Version or dependency floor changed.'
+        Assert-Condition ((Get-FileHash $manifest).Hash -eq $sourceBefore.Hash) 'The source manifest was modified.'
+    }
+    Test-Case 'unsafe notes or a missing ReleaseNotes entry never create output' {
+        $notesFile = Join-Path $testRoot 'unsafe.md'
+        # A blank line makes '@ start its own paragraph, so it survives unwrapping.
+        Set-Content -LiteralPath $notesFile -Value "Line one`n`n'@ would close the here-string" -NoNewline
+        $output = Join-Path $testRoot 'unsafe/SPOService.CrossPlatform'
+        Assert-Failure { & $stageScript -SourcePath $fixture -OutputPath $output -ReleaseNotesPath $notesFile } "starting with '@"
+        Assert-Condition (-not (Test-Path $output)) 'Unsafe notes created output.'
+
+        $saved = Get-Content -LiteralPath $manifest -Raw
+        Set-Content -LiteralPath $manifest -Value ($saved -replace "(?m)^\s*ReleaseNotes\s*=.*$", '') -NoNewline
+        Set-Content -LiteralPath $notesFile -Value 'Fine notes.' -NoNewline
+        $output = Join-Path $testRoot 'nonotes/SPOService.CrossPlatform'
+        try {
+            Assert-Failure { & $stageScript -SourcePath $fixture -OutputPath $output -ReleaseNotesPath $notesFile } 'exactly one single-line ReleaseNotes'
+            Assert-Condition (-not (Test-Path $output)) 'Missing ReleaseNotes entry created output.'
+        } finally {
+            Set-Content -LiteralPath $manifest -Value $saved -NoNewline
+        }
     }
     Test-Case 'missing input never creates output' {
         Remove-Item -LiteralPath $shim

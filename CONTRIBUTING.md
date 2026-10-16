@@ -128,8 +128,10 @@ Releases are tag-driven. Pushing a tag matching `v*` (e.g. `v0.2.0`) on
 2. Builds and smoke-tests on macOS and Ubuntu.
 3. After protected-environment approval, builds the release shim and uses
    `build/Stage-Module.ps1` to copy the module unchanged and validate it.
-4. Passes changelog notes directly to `Publish-Module -ReleaseNotes`,
-   publishes to PSGallery, and attaches the DLL to the GitHub release.
+4. Writes this version's changelog section, as plain text, into the staged
+   manifest's `ReleaseNotes` (the Gallery shows the packaged manifest's notes
+   verbatim; every other manifest key must stay identical), publishes to
+   PSGallery, and attaches the DLL and the Markdown notes to the GitHub release.
 5. Zenodo's GitHub integration then archives the published release and mints
    a version DOI from `.zenodo.json` (version and date come from the release).
 

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- PowerShell Gallery release notes now show this version's CHANGELOG section
+  as plain text instead of a link to `CHANGELOG.md`. The Gallery displays the
+  notes from the packaged manifest verbatim, so release staging writes the
+  section into the staged manifest's `ReleaseNotes` (Markdown markers
+  removed, wrapped lines joined) and fails if any other manifest key changed.
+  The source manifest keeps the link; the GitHub release keeps the Markdown.
+
 ## [0.3.0] - 2026-10-16
 
 Stabilisation release ahead of 1.0. Fixes the `0.2.0` package's corrupted
