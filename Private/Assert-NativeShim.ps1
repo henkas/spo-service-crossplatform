@@ -9,10 +9,11 @@ function Assert-NativeShim {
     # unlike HttpClientExecutorFactory, resolves without the vendor runtime, so
     # it is what tells a current shim from an older one.
     $isCurrent = { [bool]('SPOService.CrossPlatform.BackgroundInvoker' -as [type]) }
+    if (& $isCurrent) { return }   # only a current shim defines BackgroundInvoker
+
     $loaded = [AppDomain]::CurrentDomain.GetAssemblies() |
         Where-Object { -not $_.IsDynamic -and [IO.Path]::GetFileName($_.Location) -eq 'SPOService.CrossPlatform.dll' } |
         Select-Object -First 1
-    if ($loaded -and (& $isCurrent)) { return }
     if ($loaded) {
         throw "An older SPOService.CrossPlatform.dll is already loaded in this session from '$($loaded.Location)' and lacks BackgroundInvoker. A loaded assembly cannot be replaced; start a new pwsh session and import the module again."
     }
@@ -24,13 +25,8 @@ function Assert-NativeShim {
         Join-Path $script:ModuleRoot 'src/SPOService.CrossPlatform/bin/Debug/net10.0/SPOService.CrossPlatform.dll'
     )
     $path = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-    if ($path) { Add-Type -Path $path -ErrorAction Stop }
-    if ($path -and (& $isCurrent)) { return }
-    if ($path) {
-        throw "SPOService.CrossPlatform.dll at '$path' is out of date and lacks BackgroundInvoker. Rebuild it with 'dotnet build -c Release' (or reinstall the module), then start a new pwsh session; the stale assembly is already loaded in this one."
-    }
-
-    throw @"
+    if (-not $path) {
+        throw @"
 SPOService.CrossPlatform.dll was not found in any of:
   $([string]::Join("`n  ", $candidates))
 
@@ -40,4 +36,9 @@ Build it with:
 Or install the module via 'Install-Module SPOService.CrossPlatform' which ships
 the prebuilt DLL in bin/net10.0/.
 "@
+    }
+
+    Add-Type -Path $path -ErrorAction Stop
+    if (& $isCurrent) { return }
+    throw "SPOService.CrossPlatform.dll at '$path' is out of date and lacks BackgroundInvoker. Rebuild it with 'dotnet build -c Release' (or reinstall the module), then start a new pwsh session; the stale assembly is already loaded in this one."
 }
