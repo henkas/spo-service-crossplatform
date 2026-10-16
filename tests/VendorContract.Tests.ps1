@@ -91,11 +91,12 @@ Assert-That ($report.Compatible) "Installed vendor $($reflection.Version) should
 foreach ($m in $expectedMembers) {
     Assert-That ($report.Members.Contains($m)) "Contract report must probe '$m'."
 }
-$browserCtor = $report.Members['OAuthSession(string, bool[, Action<string>])']
-if ($browserCtor) {
-    $browserTypes = @($browserCtor.GetParameters().ParameterType)
-    Assert-That ($browserTypes.Count -ge 2 -and $browserTypes[0] -eq [string] -and $browserTypes[1] -eq [bool]) "Browser constructor must be (string, bool[, Action<string>]); resolved ($($browserTypes -join ', '))."
+function Assert-BrowserConstructorShape([Reflection.ConstructorInfo]$Constructor) {
+    if (-not $Constructor) { return }   # a missing member is already reported above
+    $types = @($Constructor.GetParameters().ParameterType)
+    Assert-That ($types.Count -ge 2 -and $types[0] -eq [string] -and $types[1] -eq [bool]) "Browser constructor must be (string, bool[, Action<string>]); resolved ($($types -join ', '))."
 }
+Assert-BrowserConstructorShape $report.Members['OAuthSession(string, bool[, Action<string>])']
 Assert-That ($report.Members.Count -eq $expectedMembers.Count) "Contract probes $($report.Members.Count) members; expected $($expectedMembers.Count)."
 Assert-That ($report.Vendor.Version -eq $reflection.Version) 'Report must carry the vendor version.'
 try { Assert-SPOVendorContract -Reflection $reflection } catch { $failures.Add("Assert-SPOVendorContract threw for a compatible module: $($_.Exception.Message)") }
@@ -172,19 +173,19 @@ namespace SPOServiceContractTests {
     }
 }
 '@
-foreach ($case in @(
-        @{ Type = [SPOServiceContractTests.TwoArgSession]; Count = 2 }
-        @{ Type = [SPOServiceContractTests.ThreeArgSession]; Count = 3 })) {
-    $name = $case.Type.Name
-    $ctor = Get-SPOBrowserOAuthSessionConstructor -OAuthSession $case.Type
-    Assert-That ($null -ne $ctor -and $ctor.GetParameters().Count -eq $case.Count -and $ctor.GetParameters()[1].ParameterType -eq [bool]) "$name constructor should resolve with $($case.Count) parameters."
-    $session = New-SPOSystemBrowserOAuthSession -Reflection ([pscustomobject]@{ OAuthSession = $case.Type }) -Authority 'https://login.example/authority' -Url 'https://contoso-admin.sharepoint.com'
-    Assert-That ($session -is $case.Type) "Browser helper should return a $name instance."
-    $sessionType = $case.Type
-    $lastArgs = $sessionType::LastArgs
-    Assert-That ($lastArgs.Count -eq $case.Count -and $lastArgs[0] -eq 'https://login.example/authority' -and $lastArgs[1] -eq $true) "$name should get (authority, useSystemBrowser=true)."
-    if ($case.Count -eq 3) { Assert-That ($null -eq $lastArgs[2]) 'The warning callback must be passed as null (SignIn runs off the PowerShell thread).' }
+function Assert-BrowserSessionShape([type]$SessionType, [int]$Count) {
+    $name = $SessionType.Name
+    $ctor = Get-SPOBrowserOAuthSessionConstructor -OAuthSession $SessionType
+    Assert-That ($null -ne $ctor -and $ctor.GetParameters().Count -eq $Count -and $ctor.GetParameters()[1].ParameterType -eq [bool]) "$name constructor should resolve with $Count parameters."
+    $session = New-SPOSystemBrowserOAuthSession -Reflection ([pscustomobject]@{ OAuthSession = $SessionType }) -Authority 'https://login.example/authority' -Url 'https://contoso-admin.sharepoint.com'
+    Assert-That ($session -is $SessionType) "Browser helper should return a $name instance."
+    $lastArgs = $SessionType::LastArgs
+    Assert-That ($lastArgs.Count -eq $Count -and $lastArgs[0] -eq 'https://login.example/authority' -and $lastArgs[1] -eq $true) "$name should get (authority, useSystemBrowser=true)."
+    # The warning callback must be null: SignIn runs off the PowerShell thread.
+    Assert-That ($Count -lt 3 -or $null -eq $lastArgs[2]) "$name should get a null warning callback."
 }
+Assert-BrowserSessionShape ([SPOServiceContractTests.TwoArgSession]) 2
+Assert-BrowserSessionShape ([SPOServiceContractTests.ThreeArgSession]) 3
 Assert-That ($null -eq (Get-SPOBrowserOAuthSessionConstructor -OAuthSession ([SPOServiceContractTests.BoolOnlySession]))) 'An unrelated constructor shape must not resolve.'
 
 # --- E. Already-loaded version below the minimum (only where one exists) ----
