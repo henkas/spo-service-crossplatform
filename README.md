@@ -203,7 +203,7 @@ Clears `SPOService.CurrentService`.
 - macOS (tested on Darwin 25, arm64) and Linux (expected to work on the
   same runtime — please open an issue with your distro if not)
 - `Microsoft.Online.SharePoint.PowerShell` 16.0.26615.12013 or newer (every
-  Gallery build from that version through 16.0.27612.12000 has been verified
+  Gallery build from that version through 16.0.27709.12000 has been verified
   against the module's internal-API contract; older builds lack the
   certificate sign-in members). The connect cmdlet reuses the version already
   loaded in your session if it meets this floor, otherwise imports the highest

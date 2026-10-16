@@ -136,7 +136,7 @@ function Connect-SPOServiceCrossPlatform {
 
         # The vendor prefixes its own "TAPS (<version>)" tag and CSOM caps the
         # combined ClientTag at 32 characters, leaving 13 for callers on every
-        # tested build (16.0.26615 through 16.0.27612). Enforce that here so
+        # tested build (16.0.26615 through 16.0.27709). Enforce that here so
         # the failure is a binding error, not a constructor exception.
         [ValidateLength(0, 13)]
         [string]$ClientTag = ''

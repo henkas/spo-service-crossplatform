@@ -42,7 +42,7 @@ function Test-SPOVendorContract {
         'CmdLetContext(string, PSHost, string)'                 = $cmdletContext.GetConstructor($instance, $null, @([string], $psHost, [string]), $null)
         'CmdLetContext.OAuthSession setter'                     = & $settableProperty $cmdletContext 'OAuthSession' $instance
         'CmdLetContext.WebRequestExecutorFactory setter'        = $executorFactory
-        'OAuthSession(string, bool)'                            = $oauthSession.GetConstructor($instance, $null, @([string], [bool]), $null)
+        'OAuthSession(string, bool[, Action<string>])'          = Get-SPOBrowserOAuthSessionConstructor -OAuthSession $oauthSession
         'OAuthSession.SignIn(string)'                           = $oauthSession.GetMethod('SignIn', $instance, $null, @([string]), $null)
         'OAuthSession(string, X509Certificate2, string, string)' = $oauthSession.GetConstructor($instance, $null, @([string], $x509, [string], [string]), $null)
         'OAuthSession.SignInWithCert(string)'                   = $oauthSession.GetMethod('SignInWithCert', $instance, $null, @([string]), $null)

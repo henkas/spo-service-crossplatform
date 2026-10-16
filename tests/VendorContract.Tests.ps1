@@ -8,6 +8,8 @@
        relies on is present (non-authenticating).
     D: a synthetic incompatible module yields one actionable error naming the
        missing members, the vendor version and the issue tracker.
+    D3: both vendor shapes of the system-browser OAuthSession constructor
+       resolve, and the browser helper invokes each with the right arguments.
     E: if an installed version below the minimum exists, a child session that
        already loaded it is refused with advice to start a new session.
 #>
@@ -77,7 +79,7 @@ $expectedMembers = @(
     'CmdLetContext(string, PSHost, string)'
     'CmdLetContext.OAuthSession setter'
     'CmdLetContext.WebRequestExecutorFactory setter'
-    'OAuthSession(string, bool)'
+    'OAuthSession(string, bool[, Action<string>])'
     'OAuthSession.SignIn(string)'
     'OAuthSession(string, X509Certificate2, string, string)'
     'OAuthSession.SignInWithCert(string)'
@@ -88,6 +90,11 @@ $expectedMembers = @(
 Assert-That ($report.Compatible) "Installed vendor $($reflection.Version) should satisfy the contract; missing: $($report.Missing -join ', ')"
 foreach ($m in $expectedMembers) {
     Assert-That ($report.Members.Contains($m)) "Contract report must probe '$m'."
+}
+$browserCtor = $report.Members['OAuthSession(string, bool[, Action<string>])']
+if ($browserCtor) {
+    $browserTypes = @($browserCtor.GetParameters().ParameterType)
+    Assert-That ($browserTypes.Count -ge 2 -and $browserTypes[0] -eq [string] -and $browserTypes[1] -eq [bool]) "Browser constructor must be (string, bool[, Action<string>]); resolved ($($browserTypes -join ', '))."
 }
 Assert-That ($report.Members.Count -eq $expectedMembers.Count) "Contract probes $($report.Members.Count) members; expected $($expectedMembers.Count)."
 Assert-That ($report.Vendor.Version -eq $reflection.Version) 'Report must carry the vendor version.'
@@ -145,6 +152,41 @@ $wrongReport = Test-SPOVendorContract -Reflection $wrongFactory
 Assert-That ($wrongReport.Missing -contains 'CmdLetContext.WebRequestExecutorFactory setter') 'A factory property that cannot accept the shim type must be reported as missing.'
 Assert-That ($wrongReport.Missing -notcontains 'CmdLetContext.OAuthSession setter') 'A settable OAuthSession property must not be reported as missing.'
 
+# --- D3. Both system-browser constructor shapes -----------------------------
+# 16.0.26615.12013 through 16.0.27612.12000 expose OAuthSession(string, bool);
+# 16.0.27709.12000 replaced it with OAuthSession(string, bool, Action<string>).
+Add-Type -TypeDefinition @'
+namespace SPOServiceContractTests {
+    public class TwoArgSession {
+        public static object[] LastArgs;
+        public TwoArgSession(string authority, bool useSystemBrowser) { LastArgs = new object[] { authority, useSystemBrowser }; }
+        internal System.Threading.Tasks.Task SignIn(string url) { return System.Threading.Tasks.Task.CompletedTask; }
+    }
+    public class ThreeArgSession {
+        public static object[] LastArgs;
+        public ThreeArgSession(string authority, bool useSystemBrowser, System.Action<string> writeWarning) { LastArgs = new object[] { authority, useSystemBrowser, writeWarning }; }
+        internal System.Threading.Tasks.Task SignIn(string url) { return System.Threading.Tasks.Task.CompletedTask; }
+    }
+    public class BoolOnlySession {
+        public BoolOnlySession(bool useSystemBrowser) { }
+    }
+}
+'@
+foreach ($case in @(
+        @{ Type = [SPOServiceContractTests.TwoArgSession]; Count = 2 }
+        @{ Type = [SPOServiceContractTests.ThreeArgSession]; Count = 3 })) {
+    $name = $case.Type.Name
+    $ctor = Get-SPOBrowserOAuthSessionConstructor -OAuthSession $case.Type
+    Assert-That ($null -ne $ctor -and $ctor.GetParameters().Count -eq $case.Count -and $ctor.GetParameters()[1].ParameterType -eq [bool]) "$name constructor should resolve with $($case.Count) parameters."
+    $session = New-SPOSystemBrowserOAuthSession -Reflection ([pscustomobject]@{ OAuthSession = $case.Type }) -Authority 'https://login.example/authority' -Url 'https://contoso-admin.sharepoint.com'
+    Assert-That ($session -is $case.Type) "Browser helper should return a $name instance."
+    $sessionType = $case.Type
+    $lastArgs = $sessionType::LastArgs
+    Assert-That ($lastArgs.Count -eq $case.Count -and $lastArgs[0] -eq 'https://login.example/authority' -and $lastArgs[1] -eq $true) "$name should get (authority, useSystemBrowser=true)."
+    if ($case.Count -eq 3) { Assert-That ($null -eq $lastArgs[2]) 'The warning callback must be passed as null (SignIn runs off the PowerShell thread).' }
+}
+Assert-That ($null -eq (Get-SPOBrowserOAuthSessionConstructor -OAuthSession ([SPOServiceContractTests.BoolOnlySession]))) 'An unrelated constructor shape must not resolve.'
+
 # --- E. Already-loaded version below the minimum (only where one exists) ----
 $belowFloor = $available | Where-Object { $_.Version -lt $manifestFloor } | Sort-Object Version -Descending | Select-Object -First 1
 if ($belowFloor) {
@@ -164,4 +206,4 @@ try { `$null = Get-SPOModuleReflection; 'NO-ERROR' } catch { `$_.Exception.Messa
 }
 
 if ($failures.Count) { throw ("Vendor contract failed:`n" + ($failures -join "`n")) }
-Write-Information "Vendor contract: selection policy, manifest floor, $($expectedMembers.Count) members against $($reflection.Version), synthetic failure report passed." -InformationAction Continue
+Write-Information "Vendor contract: selection policy, manifest floor, $($expectedMembers.Count) members against $($reflection.Version), synthetic failure report and both browser constructor shapes passed." -InformationAction Continue

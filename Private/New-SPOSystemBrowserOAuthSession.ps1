@@ -14,15 +14,16 @@ function New-SPOSystemBrowserOAuthSession {
         [uri]$Url
     )
 
-    $ctor = $Reflection.OAuthSession.GetConstructor(
-        [Reflection.BindingFlags]'Public,NonPublic,Instance',
-        $null,
-        @([string], [bool]),
-        $null)
+    $ctor = Get-SPOBrowserOAuthSessionConstructor -OAuthSession $Reflection.OAuthSession
     if (-not $ctor) {
-        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.OAuthSession(string, bool) is not present in the installed SPO module. System-browser interactive auth requires a newer SPO module."
+        throw "Internal error: Microsoft.Online.SharePoint.PowerShell.OAuthSession(string, bool[, Action<string>]) is not present in the installed SPO module. System-browser interactive auth requires a newer SPO module."
     }
-    $oauthSession = $ctor.Invoke(@($Authority, $true))
+    # Newer vendors take a trailing warning callback; see the resolver for why it is null.
+    $ctorArgs = [System.Collections.Generic.List[object]]::new()
+    $ctorArgs.Add($Authority)
+    $ctorArgs.Add($true)
+    if ($ctor.GetParameters().Count -eq 3) { $ctorArgs.Add($null) }
+    $oauthSession = $ctor.Invoke($ctorArgs.ToArray())
 
     $signInMethod = $Reflection.OAuthSession.GetMethod(
         'SignIn',
