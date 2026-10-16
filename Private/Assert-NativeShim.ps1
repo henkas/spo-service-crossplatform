@@ -2,16 +2,19 @@ function Assert-NativeShim {
     [CmdletBinding()]
     param()
 
-    # Every shim type the connect path uses. A loaded assembly cannot be
-    # replaced, so a session that already loaded an older shim (for example
-    # 0.3.0-rc1, before BackgroundInvoker existed) must be refused here with
-    # new-session advice rather than fail later with a type-resolution error.
-    $requiredTypes = 'SPOService.CrossPlatform.HttpClientExecutorFactory', 'SPOService.CrossPlatform.BackgroundInvoker'
-    $loaded = 'SPOService.CrossPlatform.HttpClientExecutorFactory' -as [type]
-    $missing = @($requiredTypes | Where-Object { -not ($_ -as [type]) })
-    if ($loaded -and $missing.Count -eq 0) { return }
+    # A loaded assembly cannot be replaced, so an older shim (for example
+    # 0.3.0-rc1) already in the session, or a stale build found on disk, must be
+    # refused here with clear advice rather than fail later with a
+    # type-resolution error. BackgroundInvoker is the newest shim type and,
+    # unlike HttpClientExecutorFactory, resolves without the vendor runtime, so
+    # it is what tells a current shim from an older one.
+    $isCurrent = { [bool]('SPOService.CrossPlatform.BackgroundInvoker' -as [type]) }
+    $loaded = [AppDomain]::CurrentDomain.GetAssemblies() |
+        Where-Object { -not $_.IsDynamic -and [IO.Path]::GetFileName($_.Location) -eq 'SPOService.CrossPlatform.dll' } |
+        Select-Object -First 1
+    if ($loaded -and (& $isCurrent)) { return }
     if ($loaded) {
-        throw "An older SPOService.CrossPlatform.dll is already loaded in this session from '$($loaded.Assembly.Location)' and lacks: $($missing -join ', '). A loaded assembly cannot be replaced; start a new pwsh session and import the module again."
+        throw "An older SPOService.CrossPlatform.dll is already loaded in this session from '$($loaded.Location)' and lacks BackgroundInvoker. A loaded assembly cannot be replaced; start a new pwsh session and import the module again."
     }
 
     $candidates = @(
@@ -20,12 +23,11 @@ function Assert-NativeShim {
         Join-Path $script:ModuleRoot 'src/SPOService.CrossPlatform/bin/Release/net10.0/SPOService.CrossPlatform.dll'
         Join-Path $script:ModuleRoot 'src/SPOService.CrossPlatform/bin/Debug/net10.0/SPOService.CrossPlatform.dll'
     )
-
-    foreach ($path in $candidates) {
-        if (Test-Path $path) {
-            Add-Type -Path $path -ErrorAction Stop
-            return
-        }
+    $path = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+    if ($path) { Add-Type -Path $path -ErrorAction Stop }
+    if ($path -and (& $isCurrent)) { return }
+    if ($path) {
+        throw "SPOService.CrossPlatform.dll at '$path' is out of date and lacks BackgroundInvoker. Rebuild it with 'dotnet build -c Release' (or reinstall the module), then start a new pwsh session; the stale assembly is already loaded in this one."
     }
 
     throw @"

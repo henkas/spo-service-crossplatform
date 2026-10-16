@@ -62,19 +62,35 @@ try {
 try { $null = $invoker::InvokeAsync($null, $null, [object[]]@()); $failures.Add('Null method should be rejected.') }
 catch { if ($_.Exception.Message -notmatch 'method') { $failures.Add("Null method rejection had an unexpected message: $($_.Exception.Message)") } }
 
-# 6. A session that already loaded an older shim (factory present, invoker
-#    missing) is refused with new-session advice, not a type-resolution error.
-$olderShim = @"
+# 6/7. Older shims are refused with actionable advice, not a later
+#      type-resolution error. A stand-in DLL named like the real shim, without
+#      BackgroundInvoker, plays the older build in two child sessions:
+#      6 loads it first (an rc1 session upgraded in place); 7 finds it on disk
+#      as the first candidate (a stale bin/net10.0 copy).
+$staleRoot = Join-Path ([IO.Path]::GetTempPath()) ('spo-stale-shim-' + [guid]::NewGuid().ToString('N'))
+$staleDll = Join-Path $staleRoot 'bin/net10.0/SPOService.CrossPlatform.dll'
+$null = New-Item -ItemType Directory -Force -Path (Split-Path $staleDll)
+& pwsh -NoProfile -NonInteractive -Command "Add-Type -TypeDefinition 'namespace SPOService.CrossPlatform { public class HttpClientExecutorFactory { } }' -OutputAssembly '$staleDll' -OutputType Library" 2>&1 | Out-Null
+$helperPath = Join-Path $repo 'Private/Assert-NativeShim.ps1'
+function Invoke-ShimChild([string]$Preload, [string]$Root) {
+    $child = @"
 Set-StrictMode -Version Latest
 `$ErrorActionPreference = 'Stop'
-Add-Type -TypeDefinition 'namespace SPOService.CrossPlatform { public class HttpClientExecutorFactory { } }'
-`$script:ModuleRoot = '$repo'
-. '$(Join-Path $repo 'Private/Assert-NativeShim.ps1')'
+`$preload = '$Preload'
+if (`$preload) { Add-Type -Path `$preload }
+`$script:ModuleRoot = '$Root'
+. '$helperPath'
 try { Assert-NativeShim; 'NO-ERROR' } catch { `$_.Exception.Message }
 "@
-$olderOut = & pwsh -NoProfile -NonInteractive -Command $olderShim 2>&1 | Out-String
-$olderOk = $olderOut -match 'older SPOService\.CrossPlatform\.dll' -and $olderOut -match 'BackgroundInvoker' -and $olderOut -match 'new pwsh session'
+    & pwsh -NoProfile -NonInteractive -Command $child 2>&1 | Out-String
+}
+$olderOut = Invoke-ShimChild -Preload $staleDll -Root $repo
+$staleOut = Invoke-ShimChild -Preload '' -Root $staleRoot
+Remove-Item -Recurse -Force -LiteralPath $staleRoot -ErrorAction SilentlyContinue
+$olderOk = $olderOut -match 'older SPOService\.CrossPlatform\.dll is already loaded' -and $olderOut -match 'new pwsh session'
+$staleOk = $staleOut -match 'out of date' -and $staleOut -match [regex]::Escape('bin/net10.0/SPOService.CrossPlatform.dll')
 $failures.AddRange([string[]]@(@("An older loaded shim should be refused with new-session advice; got: $olderOut") | Where-Object { -not $olderOk }))
+$failures.AddRange([string[]]@(@("A stale shim DLL on disk should be refused after loading; got: $staleOut") | Where-Object { -not $staleOk }))
 
 if ($failures.Count) { throw ("Native shim contract failed:`n" + ($failures -join "`n")) }
-Write-Information 'Native shim contract: background invoke is pollable, wait helper completes, unwraps nested tasks, surfaces original exceptions, refuses an older loaded shim.' -InformationAction Continue
+Write-Information 'Native shim contract: background invoke is pollable, wait helper completes, unwraps nested tasks, surfaces original exceptions, refuses an older loaded or stale on-disk shim.' -InformationAction Continue
