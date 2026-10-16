@@ -7,13 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-09-05
+## [0.3.0] - 2026-10-16
 
 Stabilisation release ahead of 1.0. Fixes the `0.2.0` package's corrupted
 dependency floor, hardens the pre-authentication boundary (admin URL shape,
 deterministic vendor selection, reflected-API probe), and makes the URL-only
-quick start actually start interactive sign-in. Published first as `0.3.0-rc1`
-for manual verification on macOS and Linux.
+quick start actually start interactive sign-in. `0.3.0-rc1` was published for
+manual verification on macOS; the two findings from that matrix (Ctrl+C during
+browser sign-in, vendor floor) are fixed in this release and were re-verified
+against a local build before promotion.
 
 ### Changed
 
@@ -46,7 +48,7 @@ for manual verification on macOS and Linux.
 
 - Vendor module selection is deterministic. `Connect-SPOServiceCrossPlatform`
   reuses an already-loaded `Microsoft.Online.SharePoint.PowerShell` if it
-  meets the manifest minimum (`16.0.23408.12000`), otherwise imports the
+  meets the manifest minimum, otherwise imports the
   highest installed version that does, and refuses clearly when the only
   loaded or installed versions are older (a loaded vendor assembly cannot be
   swapped; the fix is a new session or `Update-Module`). Previously the first
@@ -66,16 +68,39 @@ for manual verification on macOS and Linux.
   the partially built vendor context. `SPOService.CurrentService` is only
   assigned after the admin-site check succeeds; the original error surfaces
   unchanged.
-- Documented that Ctrl+C during interactive sign-in returns control at once
-  but cannot stop the vendor's sign-in task or loopback listener, which run
-  until the vendor's own timeout; the vendor API exposes no cancellation token.
+- Ctrl+C during interactive sign-in now returns the prompt within about a
+  quarter second. The vendor's `OAuthSession.SignIn` is async in name only: it
+  blocks its calling thread until sign-in completes or its 90-second timer
+  fires, so the previous poll loop never ran and Ctrl+C was ignored until the
+  vendor gave up (found in `0.3.0-rc1` manual testing). The module now invokes
+  sign-in on a background thread via the shim's `BackgroundInvoker` and polls
+  it. The vendor thread and loopback listener still run until the vendor's
+  timeout because its API exposes no cancellation token.
+- Importing this release into a session that already loaded an older shim
+  DLL (for example after testing `0.3.0-rc1`) now fails with advice to start
+  a new session, instead of a type-resolution error at sign-in.
 - `.env` handling is pinned by tests as opt-in and literal: only the explicit
   `-EnvPath` (default `./.env`) is read, with no variable, tilde or shell
   expansion of values.
+- The minimum `Microsoft.Online.SharePoint.PowerShell` version is raised from
+  `16.0.23408.12000` to `16.0.26615.12013`. Manual `0.3.0-rc1` testing against
+  the old floor showed it lacks the certificate `OAuthSession` constructor and
+  `SignInWithCert`, so certificate auth could never have worked there; the
+  vendor contract probe refused it cleanly before authentication. Every
+  Gallery build from `16.0.26615.12013` through `16.0.27709.12000` was probed
+  and passes the full member contract; `16.0.26510.12000` and earlier do not.
+- Interactive sign-in works with `Microsoft.Online.SharePoint.PowerShell`
+  `16.0.27709.12000`, which replaced the system-browser
+  `OAuthSession(string, bool)` constructor with
+  `OAuthSession(string, bool, Action<string>)`. Previously the vendor contract
+  probe refused that build before authentication. The module now accepts
+  either shape and passes no warning callback, as the vendor's own
+  `Connect-SPOService` does on most paths; those warnings belong to the WAM
+  broker path, which the vendor disables for system-browser sign-in.
 - Release staging now copies the manifest unchanged, preserving the SPO
-  dependency floor at `16.0.23408.12000`. The `0.2.0`
-  Gallery package incorrectly declared `0.2.0` as its dependency minimum
-  because the release workflow replaced both assignments.
+  dependency floor. The `0.2.0` Gallery package incorrectly declared `0.2.0`
+  as its dependency minimum because the release workflow replaced both
+  `ModuleVersion` assignments.
 - Tags must match committed version and prerelease metadata before builds
   or publishing approval. Changelog notes are passed directly to publishing,
   avoiding manifest quoting problems. Failed staging cleans up its output.

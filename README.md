@@ -165,16 +165,19 @@ supported on Unix in this release. Embedded-webview interactive auth is
 intentionally not supported.
 
 Interactive sign-in needs a desktop session to open a browser in. The
-cmdlet refuses up front, before loading the vendor module, when it can tell
+cmdlet refuses up front, before any sign-in or vendor API call, when it can tell
 there is none: an SSH session without a forwarded display, Linux with no
 `DISPLAY` or `WAYLAND_DISPLAY`, or Azure Cloud Shell. The error points at
 the certificate parameters to use instead.
 
-Ctrl+C during sign-in returns you to the prompt immediately and no connection
-is established. The vendor's sign-in task and its loopback listener keep
-running in the background until the vendor's own timeout, because its API
-exposes no cancellation token; a stray browser tab may still show the sign-in
-page. This is a vendor limitation, not something the module can cancel.
+Ctrl+C during sign-in returns you to the prompt within about a quarter of a
+second and no connection is established. The vendor's sign-in call blocks its
+own thread until sign-in completes or its 90-second timer fires, so the module
+runs it on a background thread and polls; after Ctrl+C that thread and its
+loopback listener keep running until the vendor times out, because the vendor
+API exposes no cancellation token. A stray browser tab may still show the
+sign-in page. Closing the browser without signing in has the same effect: the
+prompt is yours, the vendor gives up after 90 seconds.
 
 > **Azure Cloud Shell is not supported by this flow.** `-UseSystemBrowser`
 > spins up a local HTTP listener on `127.0.0.1` and opens a browser on the
@@ -199,10 +202,13 @@ Clears `SPOService.CurrentService`.
 - .NET 10 runtime (bundled with `pwsh` 7.6)
 - macOS (tested on Darwin 25, arm64) and Linux (expected to work on the
   same runtime — please open an issue with your distro if not)
-- `Microsoft.Online.SharePoint.PowerShell` 16.0.23408.12000 or newer. The
-  connect cmdlet reuses the version already loaded in your session if it meets
-  this floor, otherwise imports the highest installed version that does, and
-  probes the vendor internals it relies on before signing in. If a vendor
+- `Microsoft.Online.SharePoint.PowerShell` 16.0.26615.12013 or newer (every
+  Gallery build from that version through 16.0.27709.12000 has been verified
+  against the module's internal-API contract; older builds lack the
+  certificate sign-in members). The connect cmdlet reuses the version already
+  loaded in your session if it meets this floor, otherwise imports the highest
+  installed version that does, and probes the vendor internals it relies on
+  before signing in. If a vendor
   update changes those internals you get one error naming the version and the
   missing members, before anything is authenticated or changed.
 

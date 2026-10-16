@@ -78,6 +78,10 @@ jobs:
         shell: pwsh
         run: ./tests/VendorContract.Tests.ps1
 
+      - name: Run native shim contract tests
+        shell: pwsh
+        run: ./tests/NativeShim.Tests.ps1
+
       - name: Run connect failure-path tests
         shell: pwsh
         run: ./tests/ConnectFailure.Tests.ps1

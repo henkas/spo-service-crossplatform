@@ -16,7 +16,7 @@
     # Consumers must have Microsoft.Online.SharePoint.PowerShell installed.
     # Installing this module from PSGallery will pull it in transitively.
     RequiredModules      = @(
-        @{ ModuleName = 'Microsoft.Online.SharePoint.PowerShell'; ModuleVersion = '16.0.23408.12000' }
+        @{ ModuleName = 'Microsoft.Online.SharePoint.PowerShell'; ModuleVersion = '16.0.26615.12013' }
     )
 
     NestedModules        = @()
@@ -38,7 +38,7 @@
 
     PrivateData = @{
         PSData = @{
-            Prerelease   = 'rc1'
+            Prerelease   = ''
             Tags         = @(
                 'SharePoint'
                 'SharePointOnline'

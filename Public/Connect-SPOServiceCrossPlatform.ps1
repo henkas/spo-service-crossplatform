@@ -34,7 +34,7 @@ function Connect-SPOServiceCrossPlatform {
     (e.g. https://contoso-admin.sharepoint.com). This release supports the
     commercial cloud only; sovereign-cloud domains (sharepoint.us, .de, .cn),
     ports, paths, query strings and credentials in the URL are rejected before
-    the vendor module loads or any sign-in starts.
+    any sign-in starts or any vendor API is called.
 
 .PARAMETER ClientId
     App registration (service principal) client ID.
@@ -58,10 +58,12 @@ function Connect-SPOServiceCrossPlatform {
     supported on Unix. Interactive sign-in is refused up front in sessions
     that cannot open a browser (SSH without a forwarded display, Linux with
     no DISPLAY/WAYLAND_DISPLAY, Azure Cloud Shell); use certificate auth there.
-    Ctrl+C returns control to the prompt immediately, but the vendor's sign-in
-    task and its loopback listener keep running in the background until the
-    vendor's own timeout; the vendor API exposes no cancellation token. No
-    connection is established if you interrupt.
+    The vendor's sign-in call blocks its thread until sign-in completes or its
+    own 90-second timer fires, so the module runs it on a background thread and
+    polls. Ctrl+C therefore returns the prompt within about a quarter second
+    and no connection is established; the vendor thread and its loopback
+    listener keep running until the vendor times out, because its API exposes
+    no cancellation token.
 
 .PARAMETER UseEnvFile
     Opt in to reading ClientId, TenantId, password (PFX password), and
@@ -134,7 +136,7 @@ function Connect-SPOServiceCrossPlatform {
 
         # The vendor prefixes its own "TAPS (<version>)" tag and CSOM caps the
         # combined ClientTag at 32 characters, leaving 13 for callers on every
-        # tested build (16.0.23408 through 16.0.27515). Enforce that here so
+        # tested build (16.0.26615 through 16.0.27709). Enforce that here so
         # the failure is a binding error, not a constructor exception.
         [ValidateLength(0, 13)]
         [string]$ClientTag = ''
@@ -142,8 +144,9 @@ function Connect-SPOServiceCrossPlatform {
 
     Assert-SupportedRuntime
 
-    # Validate the URL before loading the vendor module or touching any global
-    # state, so a malformed or spoofed host never reaches authentication.
+    # Validate the URL before any sign-in, vendor API call or global state is
+    # touched, so a malformed or spoofed host never reaches authentication.
+    # (The vendor module itself is already loaded by RequiredModules at import.)
     if (-not (Test-SPOAdminUrlFormat -Url $Url)) {
         # Never echo the raw input: it may carry user-info or a query token, and
         # this message ends up in transcripts and CI logs. Name the host only.

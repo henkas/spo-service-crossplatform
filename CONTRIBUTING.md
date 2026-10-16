@@ -130,6 +130,8 @@ Releases are tag-driven. Pushing a tag matching `v*` (e.g. `v0.2.0`) on
    `build/Stage-Module.ps1` to copy the module unchanged and validate it.
 4. Passes changelog notes directly to `Publish-Module -ReleaseNotes`,
    publishes to PSGallery, and attaches the DLL to the GitHub release.
+5. Zenodo's GitHub integration then archives the published release and mints
+   a version DOI from `.zenodo.json` (version and date come from the release).
 
 Tags must be `vMAJOR.MINOR.PATCH[-PRERELEASE]`, with no leading zeros and
 an alphanumeric prerelease suffix (for example, `v0.3.0-rc1`). Suffixes
@@ -152,6 +154,7 @@ Run the standalone, non-tenant checks after installing the vendor dependency:
 ./tests/AdminUrl.Tests.ps1
 ./tests/ConnectBinding.Tests.ps1
 ./tests/VendorContract.Tests.ps1
+./tests/NativeShim.Tests.ps1
 ./tests/ConnectFailure.Tests.ps1
 ./tests/EnvFile.Tests.ps1
 ./tests/StageModule.Tests.ps1
