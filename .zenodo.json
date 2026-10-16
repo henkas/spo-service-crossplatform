@@ -25,7 +25,7 @@
   "related_identifiers": [
     {
       "identifier": "https://www.powershellgallery.com/packages/SPOService.CrossPlatform",
-      "relation": "isSupplementTo",
+      "relation": "isVariantFormOf",
       "resource_type": "software"
     }
   ]
