@@ -1,0 +1,32 @@
+{
+  "title": "SPOService.CrossPlatform",
+  "upload_type": "software",
+  "access_right": "open",
+  "description": "Cross-platform replacement for Connect-SPOService that lets the official Microsoft.Online.SharePoint.PowerShell cmdlets run on macOS and Linux under PowerShell 7.6 and .NET 10. Repairs the vendor module's broken CSOM transport with a native HttpClientExecutor shim and routes authentication through the vendor module's own OAuthSession, supporting certificate-based sign-in and interactive sign-in via the system browser. Exposes Connect-SPOServiceCrossPlatform and Disconnect-SPOServiceCrossPlatform. Import deliberately fails on Windows, where the official module already works.",
+  "creators": [
+    {
+      "name": "Papp, Henki",
+      "orcid": "0009-0000-8998-826X"
+    }
+  ],
+  "license": "MIT",
+  "keywords": [
+    "PowerShell",
+    "SharePoint Online",
+    "SPO",
+    "Microsoft 365",
+    "CSOM",
+    "cross-platform",
+    "macOS",
+    "Linux",
+    "OAuth"
+  ],
+  "language": "eng",
+  "related_identifiers": [
+    {
+      "identifier": "https://www.powershellgallery.com/packages/SPOService.CrossPlatform",
+      "relation": "isSupplementTo",
+      "resource_type": "software"
+    }
+  ]
+}

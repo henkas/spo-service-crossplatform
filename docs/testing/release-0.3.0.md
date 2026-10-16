@@ -1,6 +1,8 @@
 # Release 0.3.0 manual verification
 
-Manual, tenant-dependent checks for `0.3.0-rc2` (rc1 findings fixed) before promoting to `0.3.0`.
+Manual, tenant-dependent checks run before tagging `0.3.0`. `0.3.0-rc1` was the
+only published release candidate; the fixes for its two findings are verified
+against a local build of the release branch rather than a second Gallery RC.
 Automated CI already covers build, import, parameter binding, URL validation,
 vendor-contract probing and packaging on macOS and Ubuntu; this file records
 what CI cannot do: real authentication and real CSOM traffic.
@@ -14,11 +16,17 @@ a substitute for reading what you paste.
 
 ## Setup
 
-Install the release candidate into the current user scope in a fresh session:
+Build the release branch and import it from the checkout in a fresh session
+(the vendor module must already be installed, see Row 5 for the minimum):
+
+```bash
+git switch fix/rc2 && git pull
+dotnet build -c Release src/SPOService.CrossPlatform/SPOService.CrossPlatform.csproj
+pwsh
+```
 
 ```powershell
-Install-Module SPOService.CrossPlatform -AllowPrerelease -RequiredVersion 0.3.0-rc2 -Scope CurrentUser
-Import-Module SPOService.CrossPlatform -Force
+Import-Module ./SPOService.CrossPlatform.psd1 -Force
 (Get-Module SPOService.CrossPlatform).Version          # 0.3.0
 (Get-Command Connect-SPOService).ResolvedCommand.Name   # Connect-SPOServiceCrossPlatform
 ```
@@ -70,7 +78,7 @@ Record:
 - OS/version, architecture:
 - PowerShell version:
 - Runtime (FrameworkDescription):
-- SPOService.CrossPlatform version: 0.3.0-rc2
+- SPOService.CrossPlatform version: 0.3.0 (local build, commit:)
 - Vendor module version loaded (`(Get-Module Microsoft.Online.SharePoint.PowerShell).Version`):
 - Auth flow: certificate (PFX path)
 - Connect: pass / fail
@@ -80,6 +88,10 @@ Record:
 - Sanitised error category/message, if any:
 
 ### Row 2: macOS arm64, current vendor, system browser (required)
+
+"Current vendor" is `16.0.27709.12000` or newer. That build changed the
+system-browser `OAuthSession` constructor (it gained a trailing
+`Action<string>`), so this row is the only end-to-end check of the new shape.
 
 ```powershell
 Connect-SPOService -Url <admin-url>
@@ -114,7 +126,7 @@ the floor, so load the minimum explicitly in a fresh session before connecting:
 ```powershell
 Install-Module Microsoft.Online.SharePoint.PowerShell -RequiredVersion 16.0.26615.12013 -Scope CurrentUser -Force
 Import-Module Microsoft.Online.SharePoint.PowerShell -RequiredVersion 16.0.26615.12013
-Import-Module SPOService.CrossPlatform -Force
+Import-Module ./SPOService.CrossPlatform.psd1 -Force
 Connect-SPOService -Url <admin-url> -ClientId <id> -TenantId <id> -CertificatePath <pfx> -CertificatePassword (Read-Host -AsSecureString)
 Get-SPOTenant | Out-Null
 Get-SPOSite -Limit 5 | Out-Null
@@ -127,15 +139,19 @@ Browser flow on this row is optional.
 
 - All required rows pass: yes / no
 - Defects found (link issues):
-- Decision: promote to 0.3.0 / cut the next RC (rc3)
+- Decision: release 0.3.0 / fix and re-verify before tagging
 - Signed off by, date:
 
 ## Promotion steps (after sign-off)
 
-1. Set `Prerelease = ''` in `SPOService.CrossPlatform.psd1`, change the CHANGELOG
-   summary sentence about `0.3.0-rc1` to past tense if desired, commit and merge.
+1. Confirm `Prerelease = ''` in `SPOService.CrossPlatform.psd1` and the
+   `## [0.3.0]` CHANGELOG date match the tagging day, commit the filled-in
+   matrix above, and merge.
 2. Tag `v0.3.0` on the merged commit and push; approve the `PSGallery Publishing`
    environment when the workflow pauses.
 3. Confirm `Find-Module SPOService.CrossPlatform` shows 0.3.0 with the
    `Microsoft.Online.SharePoint.PowerShell >= 16.0.26615.12013` dependency.
 4. Leave 0.2.0 listed. Its dependency-floor defect is documented in the CHANGELOG.
+5. Confirm Zenodo archived the GitHub release and minted a version DOI with the
+   metadata from `.zenodo.json` (title, creator ORCID, MIT licence). If it did
+   not, check the repository's webhook delivery in Zenodo's GitHub settings.

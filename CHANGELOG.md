@@ -7,14 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - 2026-09-05
+## [0.3.0] - 2026-10-16
 
 Stabilisation release ahead of 1.0. Fixes the `0.2.0` package's corrupted
 dependency floor, hardens the pre-authentication boundary (admin URL shape,
 deterministic vendor selection, reflected-API probe), and makes the URL-only
-quick start actually start interactive sign-in. Published first as `0.3.0-rc1`
-and `0.3.0-rc2` for manual verification on macOS and Linux; rc2 fixes the two
-findings from the rc1 matrix (Ctrl+C during browser sign-in, vendor floor).
+quick start actually start interactive sign-in. `0.3.0-rc1` was published for
+manual verification on macOS; the two findings from that matrix (Ctrl+C during
+browser sign-in, vendor floor) are fixed in this release and were re-verified
+against a local build before promotion.
 
 ### Changed
 
@@ -83,8 +84,16 @@ findings from the rc1 matrix (Ctrl+C during browser sign-in, vendor floor).
   the old floor showed it lacks the certificate `OAuthSession` constructor and
   `SignInWithCert`, so certificate auth could never have worked there; the
   vendor contract probe refused it cleanly before authentication. Every
-  Gallery build from `16.0.26615.12013` through `16.0.27612.12000` was probed
+  Gallery build from `16.0.26615.12013` through `16.0.27709.12000` was probed
   and passes the full member contract; `16.0.26510.12000` and earlier do not.
+- Interactive sign-in works with `Microsoft.Online.SharePoint.PowerShell`
+  `16.0.27709.12000`, which replaced the system-browser
+  `OAuthSession(string, bool)` constructor with
+  `OAuthSession(string, bool, Action<string>)`. Previously the vendor contract
+  probe refused that build before authentication. The module now accepts
+  either shape and passes no warning callback, as the vendor's own
+  `Connect-SPOService` does on most paths; those warnings belong to the WAM
+  broker path, which the vendor disables for system-browser sign-in.
 - Release staging now copies the manifest unchanged, preserving the SPO
   dependency floor. The `0.2.0` Gallery package incorrectly declared `0.2.0`
   as its dependency minimum because the release workflow replaced both
