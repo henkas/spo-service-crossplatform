@@ -8,9 +8,9 @@ function Assert-NativeShim {
     # new-session advice rather than fail later with a type-resolution error.
     $requiredTypes = 'SPOService.CrossPlatform.HttpClientExecutorFactory', 'SPOService.CrossPlatform.BackgroundInvoker'
     $loaded = 'SPOService.CrossPlatform.HttpClientExecutorFactory' -as [type]
+    $missing = @($requiredTypes | Where-Object { -not ($_ -as [type]) })
+    if ($loaded -and $missing.Count -eq 0) { return }
     if ($loaded) {
-        $missing = @($requiredTypes | Where-Object { -not ($_ -as [type]) })
-        if ($missing.Count -eq 0) { return }
         throw "An older SPOService.CrossPlatform.dll is already loaded in this session from '$($loaded.Assembly.Location)' and lacks: $($missing -join ', '). A loaded assembly cannot be replaced; start a new pwsh session and import the module again."
     }
 
