@@ -34,7 +34,7 @@ function Connect-SPOServiceCrossPlatform {
     (e.g. https://contoso-admin.sharepoint.com). This release supports the
     commercial cloud only; sovereign-cloud domains (sharepoint.us, .de, .cn),
     ports, paths, query strings and credentials in the URL are rejected before
-    any vendor code runs or any sign-in starts.
+    any sign-in starts or any vendor API is called.
 
 .PARAMETER ClientId
     App registration (service principal) client ID.
@@ -144,7 +144,7 @@ function Connect-SPOServiceCrossPlatform {
 
     Assert-SupportedRuntime
 
-    # Validate the URL before any vendor code runs or any global state is
+    # Validate the URL before any sign-in, vendor API call or global state is
     # touched, so a malformed or spoofed host never reaches authentication.
     # (The vendor module itself is already loaded by RequiredModules at import.)
     if (-not (Test-SPOAdminUrlFormat -Url $Url)) {

@@ -62,5 +62,19 @@ try {
 try { $null = $invoker::InvokeAsync($null, $null, [object[]]@()); $failures.Add('Null method should be rejected.') }
 catch { if ($_.Exception.Message -notmatch 'method') { $failures.Add("Null method rejection had an unexpected message: $($_.Exception.Message)") } }
 
+# 6. A session that already loaded an older shim (factory present, invoker
+#    missing) is refused with new-session advice, not a type-resolution error.
+$olderShim = @"
+Set-StrictMode -Version Latest
+`$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition 'namespace SPOService.CrossPlatform { public class HttpClientExecutorFactory { } }'
+`$script:ModuleRoot = '$repo'
+. '$(Join-Path $repo 'Private/Assert-NativeShim.ps1')'
+try { Assert-NativeShim; 'NO-ERROR' } catch { `$_.Exception.Message }
+"@
+$olderOut = & pwsh -NoProfile -NonInteractive -Command $olderShim 2>&1 | Out-String
+$olderOk = $olderOut -match 'older SPOService\.CrossPlatform\.dll' -and $olderOut -match 'BackgroundInvoker' -and $olderOut -match 'new pwsh session'
+$failures.AddRange([string[]]@(@("An older loaded shim should be refused with new-session advice; got: $olderOut") | Where-Object { -not $olderOk }))
+
 if ($failures.Count) { throw ("Native shim contract failed:`n" + ($failures -join "`n")) }
-Write-Information 'Native shim contract: background invoke is pollable, wait helper completes, unwraps nested tasks, surfaces original exceptions.' -InformationAction Continue
+Write-Information 'Native shim contract: background invoke is pollable, wait helper completes, unwraps nested tasks, surfaces original exceptions, refuses an older loaded shim.' -InformationAction Continue

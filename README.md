@@ -165,7 +165,7 @@ supported on Unix in this release. Embedded-webview interactive auth is
 intentionally not supported.
 
 Interactive sign-in needs a desktop session to open a browser in. The
-cmdlet refuses up front, before any vendor code runs, when it can tell
+cmdlet refuses up front, before any sign-in or vendor API call, when it can tell
 there is none: an SSH session without a forwarded display, Linux with no
 `DISPLAY` or `WAYLAND_DISPLAY`, or Azure Cloud Shell. The error points at
 the certificate parameters to use instead.

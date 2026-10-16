@@ -2,8 +2,16 @@ function Assert-NativeShim {
     [CmdletBinding()]
     param()
 
-    if ('SPOService.CrossPlatform.HttpClientExecutorFactory' -as [type]) {
-        return
+    # Every shim type the connect path uses. A loaded assembly cannot be
+    # replaced, so a session that already loaded an older shim (for example
+    # 0.3.0-rc1, before BackgroundInvoker existed) must be refused here with
+    # new-session advice rather than fail later with a type-resolution error.
+    $requiredTypes = 'SPOService.CrossPlatform.HttpClientExecutorFactory', 'SPOService.CrossPlatform.BackgroundInvoker'
+    $loaded = 'SPOService.CrossPlatform.HttpClientExecutorFactory' -as [type]
+    if ($loaded) {
+        $missing = @($requiredTypes | Where-Object { -not ($_ -as [type]) })
+        if ($missing.Count -eq 0) { return }
+        throw "An older SPOService.CrossPlatform.dll is already loaded in this session from '$($loaded.Assembly.Location)' and lacks: $($missing -join ', '). A loaded assembly cannot be replaced; start a new pwsh session and import the module again."
     }
 
     $candidates = @(

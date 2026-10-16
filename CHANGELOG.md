@@ -76,6 +76,9 @@ against a local build before promotion.
   sign-in on a background thread via the shim's `BackgroundInvoker` and polls
   it. The vendor thread and loopback listener still run until the vendor's
   timeout because its API exposes no cancellation token.
+- Importing this release into a session that already loaded an older shim
+  DLL (for example after testing `0.3.0-rc1`) now fails with advice to start
+  a new session, instead of a type-resolution error at sign-in.
 - `.env` handling is pinned by tests as opt-in and literal: only the explicit
   `-EnvPath` (default `./.env`) is read, with no variable, tilde or shell
   expansion of values.
